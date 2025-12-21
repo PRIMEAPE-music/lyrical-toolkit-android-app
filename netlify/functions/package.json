@@ -1,0 +1,11 @@
+{
+  "name": "netlify-functions",
+  "version": "1.0.0",
+  "description": "Netlify functions for lyrical-toolkit",
+  "main": "index.js",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.55.0",
+    "busboy": "^1.6.0"
+  }
+}
