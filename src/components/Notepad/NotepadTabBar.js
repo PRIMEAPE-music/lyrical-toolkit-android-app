@@ -22,7 +22,8 @@ const NotepadTabBar = ({
       }`}
       style={{
         scrollbarWidth: 'thin',
-        scrollbarColor: darkMode ? '#4B5563 #1F2937' : '#D1D5DB #F9FAFB'
+        scrollbarColor: darkMode ? '#4B5563 #1F2937' : '#D1D5DB #F9FAFB',
+        WebkitOverflowScrolling: 'touch'
       }}
     >
       {tabs.map((tab, index) => {
@@ -46,9 +47,9 @@ const NotepadTabBar = ({
             <div
               className="flex-1 truncate text-xs"
               onClick={() => onSwitchTab(index)}
-              title={displayName}
+              title={displayName.length > 6 ? displayName.substring(0, 6) + "..." : displayName}
             >
-              {displayName}
+              {displayName.length > 6 ? displayName.substring(0, 6) + "..." : displayName}
             </div>
 
             {/* Close Button */}
@@ -57,12 +58,13 @@ const NotepadTabBar = ({
                 e.stopPropagation();
                 onCloseTab(index);
               }}
-              className={`flex-shrink-0 p-0.5 rounded hover:bg-red-500 hover:text-white transition-colors ${
+              className={`flex-shrink-0 rounded hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center ${
                 darkMode ? 'text-gray-500' : 'text-gray-400'
               }`}
+              style={{ width: '12px', height: '12px', padding: '2px' }}
               title="Close tab"
             >
-              <X className="w-3 h-3" />
+              <X style={{ width: "8px", height: "8px" }} />
             </button>
           </div>
         );

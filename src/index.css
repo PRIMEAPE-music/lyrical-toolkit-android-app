@@ -640,9 +640,11 @@ input:focus {
     font-size: 16px !important; /* Prevents zoom on iOS */
   }
   
-  /* Better spacing for content cards */
+  /* Better spacing for content cards - don't override bottom padding (controlled by JS for notepad) */
   .mobile-content {
-    padding: 1rem !important;
+    padding-top: 1rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
   }
   
   /* Stack synonym/antonym cards vertically on mobile */

@@ -36,6 +36,7 @@ import DictionaryTab from './components/Tabs/DictionaryTab';
 import SynonymsTab from './components/Tabs/SynonymsTab';
 import RhymesTab from './components/Tabs/RhymesTab';
 import AnalysisTab from './components/Tabs/AnalysisTab';
+import AISettings from './components/Settings/AISettings';
 import UploadTab from './components/Tabs/UploadTab';
 import StatsTab from './components/Tabs/StatsTab';
 import FloatingNotepad from './components/Notepad/FloatingNotepad';
@@ -100,13 +101,17 @@ const LyricsSearchAppContent = () => {
   
   // Audio-related state
   const [selectedSongForAudio, setSelectedSongForAudio] = useState(null);
+  const audioFileInputRef = useRef(null);
+  const [audioUploadTargetSongId, setAudioUploadTargetSongId] = useState(null);
 
   // Swipe gestures for mobile tab switching
-  const tabOrder = ['search', 'dictionary', 'synonyms', 'rhymes', 'upload', 'analysis', 'stats'];
+  const tabOrder = ['search', 'dictionary', 'upload', 'rhymes', 'stats'];
 
   const handleSwipeLeft = () => {
     if (!isMobile) return;
     const currentIndex = tabOrder.indexOf(activeTab);
+    // Don't swipe if we're on a tab not in the swipe order (synonyms, analysis, settings)
+    if (currentIndex === -1) return;
     if (currentIndex < tabOrder.length - 1) {
       setActiveTab(tabOrder[currentIndex + 1]);
     }
@@ -115,6 +120,8 @@ const LyricsSearchAppContent = () => {
   const handleSwipeRight = () => {
     if (!isMobile) return;
     const currentIndex = tabOrder.indexOf(activeTab);
+    // Don't swipe if we're on a tab not in the swipe order (synonyms, analysis, settings)
+    if (currentIndex === -1) return;
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);
     }
@@ -242,36 +249,31 @@ const LyricsSearchAppContent = () => {
   // Use ref to track if we're currently reloading to prevent infinite loop
   const isReloadingRef = useRef(false);
 
-  // Save songs to server when they change (authenticated users only)
+  // Save songs to localStorage when they change (all users)
   useEffect(() => {
-    // Skip auto-save if we're reloading or not authenticated
-    if (!isAuthenticated || songs.length === 0 || isReloadingRef.current) {
+    // Skip auto-save if we're reloading or no songs
+    if (songs.length === 0 || isReloadingRef.current) {
       return;
     }
-    
+
+    // Skip if only example song exists
+    const userSongs = songs.filter(s => !s.isExample);
+    if (userSongs.length === 0) {
+      return;
+    }
+
     const timeoutId = setTimeout(async () => {
       try {
-        console.log('💾 Auto-saving songs...');
+        console.log('💾 Auto-saving songs to localStorage...');
         await saveUserSongs(songs);
         console.log('✅ Auto-save complete');
-        
-        // Reload to sync IDs
-        isReloadingRef.current = true; // Set flag before reload
-        const allSongs = await loadAllSongs(isAuthenticated);
-        setSongs(allSongs);
-        
-        // Reset flag after a short delay to allow state to settle
-        setTimeout(() => {
-          isReloadingRef.current = false;
-        }, 1000);
       } catch (error) {
         console.error('❌ Auto-save failed:', error);
-        isReloadingRef.current = false; // Reset on error too
       }
     }, 2000); // 2 second debounce
-    
+
     return () => clearTimeout(timeoutId);
-  }, [songs, isAuthenticated]);
+  }, [songs]);
 
   // Debug token expiration issues
   useEffect(() => {
@@ -458,15 +460,35 @@ const LyricsSearchAppContent = () => {
 
     // Store original songs for rollback if needed
     const originalSongs = [...songs];
-    
+
     try {
       // Optimistically remove from UI first
       const songToDelete = songs.find(song => song.id === songId);
       if (songToDelete && songToDelete.isExample) {
         saveExampleSongDeleted(true);
       }
-      
-      setSongs(prev => prev.filter(song => song.id !== songId));
+
+      // Calculate updated songs list
+      const updatedSongs = songs.filter(song => song.id !== songId);
+      setSongs(updatedSongs);
+
+      // IMPORTANT: Save to localStorage immediately (don't rely on debounced auto-save)
+      // This ensures the delete persists even if the app closes quickly
+      console.log('💾 Saving songs to localStorage after delete...');
+      await saveUserSongs(updatedSongs);
+      console.log('✅ Songs saved to localStorage');
+
+      // Also delete associated audio file from IndexedDB if it exists
+      if (songToDelete && songToDelete.audioFileUrl && songToDelete.audioFileUrl.startsWith('indexeddb://')) {
+        try {
+          console.log('🗑️ Deleting associated audio file from IndexedDB...');
+          await audioStorageService.deleteAudioFile(songId);
+          console.log('✅ Audio file deleted from IndexedDB');
+        } catch (audioError) {
+          console.warn('⚠️ Could not delete audio file:', audioError);
+          // Don't fail the whole operation if audio delete fails
+        }
+      }
 
       // If user is authenticated, delete from server too
       if (isAuthenticated) {
@@ -476,14 +498,14 @@ const LyricsSearchAppContent = () => {
       }
     } catch (error) {
       console.error('❌ Error deleting song:', error);
-      
+
       // Show specific error message
       const errorMessage = error.message || 'Unknown error occurred';
       alert(`Failed to delete song: ${errorMessage}\n\nThe song has been restored.`);
-      
+
       // Rollback - restore the song
       setSongs(originalSongs);
-      
+
       // Optionally reload from server to ensure sync
       if (isAuthenticated) {
         try {
@@ -497,14 +519,32 @@ const LyricsSearchAppContent = () => {
   };
 
   // Delete all songs
-  const deleteAllSongs = () => {
+  const deleteAllSongs = async () => {
     if (window.confirm('Are you sure you want to delete ALL songs? This cannot be undone.')) {
-      setSongs([]);
-      setSearchQuery('');
-      setHighlightWord('');
-      setSearchHistory([]);
-      clearUserSongs(); // Clear from localStorage as well
-      saveExampleSongDeleted(false); // Reset so example can load again
+      try {
+        setSongs([]);
+        setSearchQuery('');
+        setHighlightWord('');
+        setSearchHistory([]);
+
+        // Clear from localStorage
+        await clearUserSongs();
+        console.log('✅ Songs cleared from localStorage');
+
+        // Clear all audio files from IndexedDB
+        try {
+          await audioStorageService.clearAllAudioFiles();
+          console.log('✅ Audio files cleared from IndexedDB');
+        } catch (audioError) {
+          console.warn('⚠️ Could not clear audio files:', audioError);
+          // Don't fail the whole operation
+        }
+
+        saveExampleSongDeleted(false); // Reset so example can load again
+      } catch (error) {
+        console.error('❌ Error deleting all songs:', error);
+        alert('Failed to delete all songs. Please try again.');
+      }
     }
   };
 
@@ -979,21 +1019,38 @@ const LyricsSearchAppContent = () => {
     
     try {
       // CRITICAL: Validate that the upload actually succeeded
-      if (!audioData || !audioData.url) {
+      if (!audioData || !audioData.audioUrl) {
         throw new Error('Invalid audio data - no URL provided');
       }
-      
-      // Test if the uploaded file actually exists and is accessible
+
+      // For IndexedDB storage, verify the file was saved by checking if it exists
       console.log('🔍 Verifying uploaded file exists...');
-      try {
-        const testResponse = await fetch(audioData.url, { method: 'HEAD' });
-        if (!testResponse.ok) {
-          throw new Error(`Uploaded file not accessible: ${testResponse.status}`);
+      if (audioData.audioUrl.startsWith('indexeddb://')) {
+        // IndexedDB URL - verify by trying to retrieve the audio
+        try {
+          const blobUrl = await audioStorageService.getAudioBlobURL(songId);
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl); // Clean up test blob URL
+            console.log('✅ File verified in IndexedDB');
+          } else {
+            throw new Error('File not found in IndexedDB');
+          }
+        } catch (error) {
+          console.error('❌ IndexedDB verification failed:', error);
+          throw new Error(`Upload verification failed: ${error.message}`);
         }
-        console.log('✅ File verified as accessible');
-      } catch (error) {
-        console.error('❌ File verification failed:', error);
-        throw new Error(`Upload verification failed: ${error.message}`);
+      } else {
+        // HTTP URL - verify by fetching
+        try {
+          const testResponse = await fetch(audioData.audioUrl, { method: 'HEAD' });
+          if (!testResponse.ok) {
+            throw new Error(`Uploaded file not accessible: ${testResponse.status}`);
+          }
+          console.log('✅ File verified as accessible');
+        } catch (error) {
+          console.error('❌ File verification failed:', error);
+          throw new Error(`Upload verification failed: ${error.message}`);
+        }
       }
       
       // Only update local state AFTER verifying the upload succeeded
@@ -1002,7 +1059,7 @@ const LyricsSearchAppContent = () => {
         if (song.id === songId) {
           return {
             ...song,
-            audioFileUrl: audioData.url,
+            audioFileUrl: audioData.audioUrl,
             audioFileName: audioData.filename,
             audioFileSize: audioData.size,
             audioDuration: audioData.duration
@@ -1014,23 +1071,19 @@ const LyricsSearchAppContent = () => {
       setSongs(updatedSongs);
       console.log('✅ Local state updated');
       
-      // Save to backend database if authenticated
-      if (isAuthenticated) {
-        console.log('🔄 Saving to backend database...');
-        try {
-          await saveUserSongs(updatedSongs);
-          console.log('✅ Successfully saved to database');
-        } catch (dbError) {
-          console.error('❌ Database save failed:', dbError);
-          
-          // Revert local state if database save fails
-          console.log('🔄 Reverting local state due to database error...');
-          setSongs(songs); // Revert to original songs
-          
-          throw new Error(`Failed to save to database: ${dbError.message}`);
-        }
-      } else {
-        console.warn('⚠️ User not authenticated - audio metadata not saved to database');
+      // Save to localStorage (works for all users)
+      console.log('🔄 Saving songs to localStorage...');
+      try {
+        await saveUserSongs(updatedSongs);
+        console.log('✅ Successfully saved to localStorage');
+      } catch (saveError) {
+        console.error('❌ Save failed:', saveError);
+
+        // Revert local state if save fails
+        console.log('🔄 Reverting local state due to save error...');
+        setSongs(songs); // Revert to original songs
+
+        throw new Error(`Failed to save: ${saveError.message}`);
       }
       
       // Clear selection only after everything succeeds
@@ -1046,7 +1099,7 @@ const LyricsSearchAppContent = () => {
       console.error('Error details:', error);
       
       // Show user-friendly error message
-      alert(`Failed to upload audio: ${error.message}\n\nPlease check:\n1. Your internet connection\n2. File size (max 50MB)\n3. File format (MP3, WAV, M4A)\n\nThen try again.`);
+      alert(`Failed to upload audio: ${error.message}\n\nPlease check:\n1. File format (MP3, WAV, M4A, OGG, FLAC)\n2. The file is not corrupted\n\nThen try again.`);
       
       // Don't update UI state if upload failed
       console.log('🚫 Not updating UI state due to upload failure');
@@ -1147,6 +1200,50 @@ const LyricsSearchAppContent = () => {
       alert(`Failed to remove audio file: ${error.message}`);
     }
   };
+
+  // Trigger direct audio file picker for a specific song
+  const triggerAudioFilePicker = (songId) => {
+    setAudioUploadTargetSongId(songId);
+    if (audioFileInputRef.current) {
+      audioFileInputRef.current.click();
+    }
+  };
+
+  // Handle audio file selection from the hidden input
+  const handleAudioFileInputChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !audioUploadTargetSongId) {
+      setAudioUploadTargetSongId(null);
+      return;
+    }
+
+    // Validate the file
+    const validation = audioStorageService.validateAudioFile(file);
+    if (!validation.isValid) {
+      alert(`Invalid audio file: ${validation.errors.join(', ')}`);
+      setAudioUploadTargetSongId(null);
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      // Upload the file
+      const result = await audioStorageService.uploadAudioFile(
+        file,
+        audioUploadTargetSongId,
+        user?.userId || 'anonymous'
+      );
+
+      // Call the upload success handler
+      await handleAudioUpload(audioUploadTargetSongId, result);
+    } catch (error) {
+      console.error('Audio upload error:', error);
+      // handleAudioUpload already shows an alert
+    } finally {
+      setAudioUploadTargetSongId(null);
+      e.target.value = '';
+    }
+  };
   
   const themeClasses = darkMode 
     ? 'dark bg-gray-900 text-white' 
@@ -1154,6 +1251,15 @@ const LyricsSearchAppContent = () => {
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${themeClasses}`}>
+      {/* Hidden audio file input for direct upload */}
+      <input
+        ref={audioFileInputRef}
+        type="file"
+        accept="audio/*,.mp3,.wav,.m4a,.mp4,.aac,.ogg,.flac"
+        onChange={handleAudioFileInputChange}
+        className="hidden"
+      />
+
       {/* Music Banner */}
       <MusicBanner />
 
@@ -1279,11 +1385,15 @@ const LyricsSearchAppContent = () => {
         </div>
       )}
 
-      {/* Main Content - Add bottom padding on mobile for bottom nav */}
+      {/* Main Content - Add bottom padding on mobile for bottom nav and notepad */}
       <div
         className="max-w-6xl mx-auto px-4 py-6 mobile-content"
         style={{
-          paddingBottom: isMobile ? 'calc(15rem + env(safe-area-inset-bottom, 0px))' : '1.5rem'
+          paddingBottom: isMobile
+            ? notepadState.isMinimized
+              ? 'calc(15rem + env(safe-area-inset-bottom, 0px))'
+              : `calc(15rem + ${notepadState.dimensions.height}px + env(safe-area-inset-bottom, 0px))`
+            : '1.5rem'
         }}
       >
         {/* Manual Content */}
@@ -1339,7 +1449,7 @@ const LyricsSearchAppContent = () => {
             )}
 
             {activeTab === 'analysis' && (
-              <AnalysisTab 
+              <AnalysisTab
                 songs={songs}
                 selectedSongForAnalysis={selectedSongForAnalysis}
                 setSelectedSongForAnalysis={setSelectedSongForAnalysis}
@@ -1351,6 +1461,10 @@ const LyricsSearchAppContent = () => {
                 stats={stats}
                 darkMode={darkMode}
               />
+            )}
+
+            {activeTab === 'settings' && (
+              <AISettings darkMode={darkMode} />
             )}
 
             {activeTab === 'upload' && (
@@ -1372,9 +1486,6 @@ const LyricsSearchAppContent = () => {
                 onAudioUpload={handleAudioUpload}
                 onAudioDownload={handleAudioDownload}
                 onAudioRemove={handleAudioRemove}
-                onAudioReplace={(song) => setSelectedSongForAudio(song)}
-                selectedSongForAudio={selectedSongForAudio}
-                setSelectedSongForAudio={setSelectedSongForAudio}
                 userId={user?.userId || 'anonymous'}
                 // Draft-related props
                 onCreateDraft={handleCreateDraft}
@@ -1438,8 +1549,9 @@ const LyricsSearchAppContent = () => {
           if (notepadState.currentEditingSongId) handleAudioRemove(notepadState.currentEditingSongId);
         }}
         onAudioReplace={() => {
-          const currentSong = songs.find(s => s.id === notepadState.currentEditingSongId);
-          if (currentSong) setSelectedSongForAudio(currentSong);
+          if (notepadState.currentEditingSongId) {
+            triggerAudioFilePicker(notepadState.currentEditingSongId);
+          }
         }}
         // Draft/Tab management props
         openTabs={openTabs}

@@ -28,29 +28,51 @@ const openDB = () => {
 };
 
 // Save audio file to IndexedDB
+// Converts File to ArrayBuffer for reliable storage on mobile
 export const saveAudioFile = async (id, file, metadata = {}) => {
   try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
+    // IMPORTANT: Convert File to ArrayBuffer BEFORE creating transaction
+    // IndexedDB transactions auto-commit when the event loop processes other events
+    // If we await inside a transaction, it will close before we can use it
+    console.log('🔄 Converting file to ArrayBuffer for storage...');
+    const arrayBuffer = await file.arrayBuffer();
+    console.log('✅ Converted to ArrayBuffer, size:', arrayBuffer.byteLength);
 
     const audioData = {
       id,
-      file,
+      arrayBuffer, // Store as ArrayBuffer instead of File
       filename: metadata.filename || file.name,
       size: metadata.size || file.size,
       duration: metadata.duration,
       uploadedAt: new Date().toISOString(),
-      type: file.type
+      type: file.type || 'audio/wav' // Default to wav if type is empty
     };
 
+    // Now create the transaction and store synchronously (no awaits between transaction and put)
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+
     return new Promise((resolve, reject) => {
+      // Handle transaction-level errors
+      transaction.onerror = () => {
+        console.error('❌ IndexedDB transaction error:', transaction.error);
+        reject(transaction.error);
+      };
+
+      transaction.oncomplete = () => {
+        console.log('✅ Transaction completed successfully');
+      };
+
       const request = store.put(audioData);
       request.onsuccess = () => {
-        console.log('✅ Audio file saved to IndexedDB:', id);
+        console.log('✅ Audio file saved to IndexedDB:', id, 'size:', arrayBuffer.byteLength);
         resolve(audioData);
       };
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('❌ IndexedDB put error:', request.error);
+        reject(request.error);
+      };
     });
   } catch (error) {
     console.error('❌ Error saving audio to IndexedDB:', error);
@@ -148,10 +170,29 @@ export const clearAllAudioFiles = async () => {
 };
 
 // Create blob URL for audio playback
-export const createAudioBlobURL = (file) => {
+// Accepts either audioData object (with arrayBuffer) or legacy file object
+export const createAudioBlobURL = (audioData) => {
   try {
-    const blob = new Blob([file], { type: file.type });
+    let blob;
+
+    // Handle new format (ArrayBuffer stored in audioData)
+    if (audioData.arrayBuffer) {
+      console.log('🔄 Creating blob from ArrayBuffer, size:', audioData.arrayBuffer.byteLength);
+      blob = new Blob([audioData.arrayBuffer], { type: audioData.type || 'audio/wav' });
+    }
+    // Handle legacy format (File object)
+    else if (audioData.file) {
+      console.log('🔄 Creating blob from legacy File object');
+      blob = new Blob([audioData.file], { type: audioData.file.type || audioData.type || 'audio/wav' });
+    }
+    // Handle raw file/buffer passed directly
+    else {
+      console.log('🔄 Creating blob from raw data');
+      blob = new Blob([audioData], { type: audioData.type || 'audio/wav' });
+    }
+
     const url = URL.createObjectURL(blob);
+    console.log('✅ Created blob URL:', url);
     return url;
   } catch (error) {
     console.error('❌ Error creating blob URL:', error);

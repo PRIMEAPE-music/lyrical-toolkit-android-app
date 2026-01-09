@@ -440,13 +440,12 @@ const AudioPlayer = ({
               }`}>
                 {audioFilename}
               </h4>
-              {(audioSize || audioDuration) && (
+              {audioSize && (
                 <p className={`text-xs mt-1 ${
                   darkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
-                  {audioSize && audioStorageService.formatFileSize(audioSize)}
-                  {audioSize && duration && ' • '}
-                  {duration > 0 && audioStorageService.formatDuration(duration)}                </p>
+                  {audioStorageService.formatFileSize(audioSize)}
+                </p>
               )}
             </div>
             

@@ -32,7 +32,11 @@
       "Bash(grep:*)",
       "Bash(netlify functions:list:*)",
       "Bash(npm test:*)",
-      "Bash(start http://localhost:3000)"
+      "Bash(start http://localhost:3000)",
+      "Bash(npx cap sync android)",
+      "Bash(npx cap:*)",
+      "Bash(where:*)",
+      "Bash(cat:*)"
     ],
     "defaultMode": "acceptEdits"
   }

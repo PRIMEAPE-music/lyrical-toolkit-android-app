@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Edit3, Minimize2, Maximize2, Download, Upload, RotateCcw, Plus, Expand, Shrink } from 'lucide-react';
+import { Edit3, Minimize2, Maximize2, Download, Upload, RotateCcw, Plus, Expand, Shrink, ChevronsUpDown } from 'lucide-react';
 import AudioPlayer from '../Audio/AudioPlayer';
 import NotepadTabBar from './NotepadTabBar';
 
@@ -45,6 +45,8 @@ const FloatingNotepad = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [tempPosition, setTempPosition] = useState(position);
   const [tempDimensions, setTempDimensions] = useState(dimensions);
+  const [isMobileResizing, setIsMobileResizing] = useState(false);
+  const mobileResizeDataRef = useRef(null);
   
   // Store the current transform for immediate DOM updates
   const currentTransformRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
@@ -323,7 +325,7 @@ const FloatingNotepad = ({
   const getResizeCursor = (direction) => {
     const cursors = {
       'n': 'ns-resize',
-      'ne': 'ne-resize', 
+      'ne': 'ne-resize',
       'e': 'ew-resize',
       'se': 'se-resize',
       's': 'ns-resize',
@@ -332,6 +334,100 @@ const FloatingNotepad = ({
       'nw': 'nw-resize'
     };
     return cursors[direction] || 'default';
+  };
+
+  // Mobile resize via drag handle
+  const startMobileResize = (clientY) => {
+    if (isMinimized || isFullscreen) return;
+
+    mobileResizeDataRef.current = {
+      startY: clientY,
+      startHeight: tempDimensions.height
+    };
+
+    setIsMobileResizing(true);
+    document.body.style.userSelect = 'none';
+    document.body.style.touchAction = 'none';
+
+    document.addEventListener('touchmove', handleMobileResizeMove, { passive: false });
+    document.addEventListener('touchend', endMobileResize);
+    document.addEventListener('mousemove', handleMobileResizeMouseMove, { passive: false });
+    document.addEventListener('mouseup', endMobileResize);
+  };
+
+  const handleMobileResizeMove = (e) => {
+    e.preventDefault();
+    if (!mobileResizeDataRef.current) return;
+
+    const touch = e.touches[0];
+    const { startY, startHeight } = mobileResizeDataRef.current;
+
+    // Dragging up (negative dy) increases height, dragging down decreases
+    const dy = startY - touch.clientY;
+    const newHeight = Math.max(200, Math.min(window.innerHeight - 150, startHeight + dy));
+
+    // Update DOM directly for smooth performance
+    if (containerRef.current) {
+      containerRef.current.style.height = `${newHeight}px`;
+    }
+
+    currentTransformRef.current = {
+      ...currentTransformRef.current,
+      height: newHeight
+    };
+  };
+
+  const handleMobileResizeMouseMove = (e) => {
+    if (!mobileResizeDataRef.current) return;
+
+    const { startY, startHeight } = mobileResizeDataRef.current;
+    const dy = startY - e.clientY;
+    const newHeight = Math.max(200, Math.min(window.innerHeight - 150, startHeight + dy));
+
+    if (containerRef.current) {
+      containerRef.current.style.height = `${newHeight}px`;
+    }
+
+    currentTransformRef.current = {
+      ...currentTransformRef.current,
+      height: newHeight
+    };
+  };
+
+  const endMobileResize = () => {
+    if (!mobileResizeDataRef.current) return;
+
+    mobileResizeDataRef.current = null;
+    setIsMobileResizing(false);
+    document.body.style.userSelect = '';
+    document.body.style.touchAction = '';
+
+    document.removeEventListener('touchmove', handleMobileResizeMove);
+    document.removeEventListener('touchend', endMobileResize);
+    document.removeEventListener('mousemove', handleMobileResizeMouseMove);
+    document.removeEventListener('mouseup', endMobileResize);
+
+    // Update React state with final height
+    const finalHeight = currentTransformRef.current.height;
+    if (finalHeight) {
+      const finalDimensions = {
+        ...tempDimensions,
+        height: finalHeight
+      };
+      setTempDimensions(finalDimensions);
+      updateDimensions(finalDimensions);
+    }
+  };
+
+  const handleDragHandleTouchStart = (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    startMobileResize(touch.clientY);
+  };
+
+  const handleDragHandleMouseDown = (e) => {
+    e.preventDefault();
+    startMobileResize(e.clientY);
   };
 
   const handleKeyDown = (e) => {
@@ -393,7 +489,7 @@ const FloatingNotepad = ({
         }`}
         style={{
           bottom: `calc(80px + env(safe-area-inset-bottom, 0px))`, // 80px = 64px bottom nav + 16px spacing
-          right: '16px',
+          right: `calc(16px + env(safe-area-inset-right, 0px))`,
           width: '56px',
           height: '56px'
         }}
@@ -407,13 +503,52 @@ const FloatingNotepad = ({
 
   return (
     <>
+    {/* Mobile Drag Handle - Shows above notepad when expanded on mobile */}
+    {!isFullscreen && !isMinimized && isMobile && (
+      <div
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          handleDragHandleTouchStart(e);
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          handleDragHandleMouseDown(e);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className={`fixed flex items-center justify-center cursor-ns-resize z-[999999]`}
+        style={{
+          bottom: `${tempPosition.bottom + 64 + tempDimensions.height}px`,
+          // Center the handle: notepad right edge + half notepad width - half handle width
+          right: `${tempPosition.right + (tempDimensions.width / 2) - (tempDimensions.width * 0.25 / 2)}px`,
+          width: `${tempDimensions.width * 0.25}px`,
+          minWidth: '80px',
+          height: '24px',
+          touchAction: 'none',
+          backgroundColor: darkMode ? 'rgba(31, 41, 55, 1)' : 'rgba(255, 255, 255, 1)',
+          border: darkMode ? '2px solid white' : '2px solid #6b7280',
+          borderRadius: '8px 8px 0 0',
+          borderBottom: 'none'
+        }}
+      >
+        {/* Drag handle icon */}
+        <ChevronsUpDown
+          className={`transition-colors ${
+            isMobileResizing
+              ? darkMode ? 'text-gray-300' : 'text-gray-600'
+              : darkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}
+          style={{ width: '20px', height: '20px' }}
+        />
+      </div>
+    )}
+
     {!isFullscreen && (
     <div
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       className={`fixed shadow-2xl border ${
-        isDragging || isResizing ? 'transition-none' : 'transition-all duration-300'
+        isDragging || isResizing || isMobileResizing ? 'transition-none' : 'transition-all duration-300'
       } ${
         isMinimized ? 'z-[60] md:z-[70] floating-notepad-minimized' : 'z-[999999]'
       } ${
@@ -423,7 +558,7 @@ const FloatingNotepad = ({
       } ${!isMinimized ? 'floating-notepad-expanded' : ''} ${
         isDragging ? 'shadow-3xl scale-[1.02]' : ''
       } ${
-        isResizing ? 'shadow-3xl' : ''
+        isResizing || isMobileResizing ? 'shadow-3xl' : ''
       }`}
       style={
         isMinimized
@@ -444,8 +579,8 @@ const FloatingNotepad = ({
           : {
               // Expanded: Floating window
               bottom: isMobile ? `${tempPosition.bottom + 64}px` : `${tempPosition.bottom}px`, // 64px = BottomNav height on mobile
-              right: `${tempPosition.right}px`,
-              width: `${tempDimensions.width}px`,
+              right: isMobile ? `calc(${Math.max(tempPosition.right, 8)}px + env(safe-area-inset-right, 0px))` : `${tempPosition.right}px`,
+              width: isMobile ? `calc(${tempDimensions.width}px - env(safe-area-inset-right, 0px))` : `${tempDimensions.width}px`,
               height: `${tempDimensions.height}px`,
               borderRadius: '8px',
               resize: 'none', // Disable default resize, we'll use custom handles
@@ -494,7 +629,7 @@ const FloatingNotepad = ({
         </div>
 
         {/* Right side - Export buttons (when expanded) + Minimize/Maximize button */}
-        <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0 notepad-header-buttons">
+        <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0 notepad-header-buttons pr-1">
           {!isMinimized && (
             <>
               {/* 1. Upload/Save Song Button - Context Aware */}
@@ -539,13 +674,13 @@ const FloatingNotepad = ({
                 <Download className="w-3 h-3" style={darkMode ? {} : { color: '#000000' }} />
               </button>
 
-              {/* 3. Empty Notepad Button - Only show when editing */}
+              {/* 3. Empty Notepad Button - Only show when editing, hidden on mobile */}
               {notepadState.currentEditingSongId && (
                 <button
                   onClick={onStartNewContent}
-                  className={`p-1 rounded text-xs transition-colors ${
-                    darkMode 
-                      ? 'bg-purple-800 hover:bg-purple-700 text-purple-200' 
+                  className={`p-1 rounded text-xs transition-colors hidden md:block ${
+                    darkMode
+                      ? 'bg-purple-800 hover:bg-purple-700 text-purple-200'
                       : 'bg-purple-600 hover:bg-purple-700 text-white'
                   }`}
                   title="Empty Notepad"
@@ -554,19 +689,14 @@ const FloatingNotepad = ({
                 </button>
               )}
 
-              {/* 4. Revert Changes Button - Only show when editing */}
-              {notepadState.currentEditingSongId && (
+              {/* 4. Revert Changes Button - Only show when editing and has changes, hidden on mobile */}
+              {notepadState.currentEditingSongId && hasUnsavedChanges && (
                 <button
                   onClick={onRevertChanges}
-                  disabled={!hasUnsavedChanges}
-                  className={`p-1 rounded text-xs transition-colors ${
-                    hasUnsavedChanges
-                      ? darkMode 
-                        ? 'bg-orange-800 hover:bg-orange-700 text-orange-200' 
-                        : 'bg-orange-600 hover:bg-orange-700 text-white'
-                      : darkMode
-                        ? 'bg-gray-600 text-gray-500 cursor-not-allowed'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  className={`p-1 rounded text-xs transition-colors hidden md:block ${
+                    darkMode
+                      ? 'bg-orange-800 hover:bg-orange-700 text-orange-200'
+                      : 'bg-orange-600 hover:bg-orange-700 text-white'
                   }`}
                   title="Revert to Original"
                 >
@@ -657,13 +787,13 @@ const FloatingNotepad = ({
           <button
             onClick={toggleFullscreen}
             className={`absolute w-10 h-10 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center mobile-fullscreen-btn ${
-              darkMode 
-                ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600' 
+              darkMode
+                ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
                 : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300'
             } hover:scale-110 z-20`}
             style={{
-              bottom: '8px',
-              right: '8px',
+              bottom: '12px',
+              right: '12px',
               left: 'auto'
             }}
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}

@@ -277,27 +277,27 @@ export const searchSongs = async (query) => {
 // Load example song for users with no songs
 export const getExampleSong = async () => {
   try {
-    const response = await fetch('/HUMAN.txt');
+    const response = await fetch('/A GOOD DAY.txt');
     if (!response.ok) {
       throw new Error('Failed to load example song');
     }
     const content = await response.text();
 
     return {
-      id: 'example-human',
-      title: 'HUMAN',
+      id: 'example-a-good-day',
+      title: 'A GOOD DAY',
       lyrics: content,           // Frontend expects lyrics field
       content: content,          // Backend uses content field
-      filename: 'HUMAN.txt',
+      filename: 'A GOOD DAY.txt',
       word_count: content.split(/\s+/).filter(word => word.trim()).length,
       line_count: content.split('\n').filter(line => line.trim()).length,
       date_added: new Date().toISOString(),
       isExample: true,
       // Audio metadata
-      audio_file_url: '/HUMAN.mp3',
-      audio_file_name: 'HUMAN.mp3',
-      audio_file_size: 3411864,
-      audio_duration: 245
+      audio_file_url: '/A GOOD DAY.mp3',
+      audio_file_name: 'A GOOD DAY.mp3',
+      audio_file_size: 7296521,
+      audio_duration: 182
     };
   } catch (error) {
     console.error('Failed to load example song:', error);

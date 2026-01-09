@@ -47,28 +47,28 @@ export const loadExampleSongDeleted = () => {
 // Load example song for users with no songs
 export const loadExampleSong = async () => {
   try {
-    const response = await fetch('/HUMAN.txt');
+    const response = await fetch('/A GOOD DAY.txt');
     if (!response.ok) {
       throw new Error('Failed to load example song');
     }
     const content = await response.text();
 
     return {
-      id: 'example-human',
-      title: 'HUMAN',
+      id: 'example-a-good-day',
+      title: 'A GOOD DAY',
       lyrics: content,
       content: content,
-      filename: 'HUMAN.txt',
+      filename: 'A GOOD DAY.txt',
       wordCount: content.split(/\s+/).filter(word => word.trim()).length,
       lineCount: content.split('\n').filter(line => line.trim()).length,
       dateAdded: new Date().toISOString(),
       isExample: true,
       drafts: [],
       // Audio metadata
-      audioFileUrl: '/HUMAN.mp3',
-      audioFileName: 'HUMAN.mp3',
-      audioFileSize: 3411864,
-      audioDuration: 245
+      audioFileUrl: '/A GOOD DAY.mp3',
+      audioFileName: 'A GOOD DAY.mp3',
+      audioFileSize: 7296521,
+      audioDuration: 182
     };
   } catch (error) {
     console.error('Failed to load example song:', error);
