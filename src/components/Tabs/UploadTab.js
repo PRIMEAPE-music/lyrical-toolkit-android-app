@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Plus, FileText, Trash2, Music, Loader2 } from 'lucide-react';
+import { Upload, Plus, FileText, Trash2, Music, Loader2, Database, HardDrive, ArrowRightLeft } from 'lucide-react';
 import ExportDropdown from '../Shared/ExportDropdown';
 import AudioPlayer from '../Audio/AudioPlayer';
 import audioStorageService from '../../services/audioStorageService';
@@ -22,7 +22,13 @@ const UploadTab = ({
   onAudioUpload = null,
   onAudioDownload = null,
   onAudioRemove = null,
-  userId = null
+  userId = null,
+  // Storage type props
+  storageType = 'local',
+  onStorageTypeChange = null,
+  isAuthenticated = false,
+  // Transfer props
+  onTransferSong = null
 }) => {
   // Ref for the hidden audio file input
   const audioInputRef = useRef(null);
@@ -142,9 +148,64 @@ const UploadTab = ({
         </p>
       </div>
 
+      {/* Storage Type Tabs */}
+      <div className="mt-8">
+        <div className={`flex gap-2 mb-4 p-1 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+          <button
+            onClick={() => onStorageTypeChange && onStorageTypeChange('local')}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              storageType === 'local'
+                ? darkMode
+                  ? 'bg-gray-700 text-white'
+                  : 'bg-white text-gray-900 shadow-sm'
+                : darkMode
+                  ? 'text-gray-400 hover:text-gray-300'
+                  : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <HardDrive className="w-4 h-4" />
+            Local Storage
+          </button>
+          <button
+            onClick={() => onStorageTypeChange && onStorageTypeChange('database')}
+            disabled={!isAuthenticated}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              storageType === 'database'
+                ? darkMode
+                  ? 'bg-gray-700 text-white'
+                  : 'bg-white text-gray-900 shadow-sm'
+                : !isAuthenticated
+                  ? 'text-gray-500 cursor-not-allowed opacity-50'
+                  : darkMode
+                    ? 'text-gray-400 hover:text-gray-300'
+                    : 'text-gray-600 hover:text-gray-900'
+            }`}
+            title={!isAuthenticated ? 'Login required for database storage' : ''}
+          >
+            <Database className="w-4 h-4" />
+            Database {!isAuthenticated && '(Login Required)'}
+          </button>
+        </div>
+
+        {/* Info Banner */}
+        <div className={`mb-4 p-3 rounded-lg text-sm ${
+          darkMode ? 'bg-blue-900/30 text-blue-300 border border-blue-800' : 'bg-blue-50 text-blue-800 border border-blue-200'
+        }`}>
+          {storageType === 'local' ? (
+            <p>
+              <strong>Local Storage:</strong> Songs are saved in your browser. Data persists on this device only.
+            </p>
+          ) : (
+            <p>
+              <strong>Database Storage:</strong> Songs are synced to the cloud. Access them from any device when logged in.
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* Uploaded Songs List */}
       {songs.length > 0 && (
-        <div className="mt-8">
+        <div className="mt-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className={`text-lg font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
               Your Songs ({songs.length})
@@ -244,6 +305,29 @@ const UploadTab = ({
                     >
                       Edit
                     </button>
+                    {/* Transfer button - only show for non-example songs */}
+                    {!song.isExample && onTransferSong && (
+                      <button
+                        onClick={() => onTransferSong(song)}
+                        disabled={storageType === 'local' && !isAuthenticated}
+                        className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
+                          storageType === 'local' && !isAuthenticated
+                            ? 'bg-gray-400 cursor-not-allowed opacity-50'
+                            : darkMode
+                              ? 'bg-purple-700 hover:bg-purple-600 text-purple-200'
+                              : 'bg-purple-200 hover:bg-purple-300 text-purple-700'
+                        }`}
+                        title={
+                          storageType === 'local' && !isAuthenticated
+                            ? 'Login required to transfer to database'
+                            : storageType === 'local'
+                              ? 'Transfer to Database'
+                              : 'Transfer to Local Storage'
+                        }
+                      >
+                        <ArrowRightLeft className="w-3 h-3 md:w-4 md:h-4" style={{ width: '12px', height: '12px' }} />
+                      </button>
+                    )}
                     <ExportDropdown
                       song={song}
                       onExportTxt={onExportTxt}

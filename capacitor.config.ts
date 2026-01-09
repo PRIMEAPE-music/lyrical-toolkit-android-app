@@ -5,10 +5,10 @@ const config: CapacitorConfig = {
   appName: 'Lyrical Toolkit',
   webDir: 'build',
   server: {
-    // Allow cleartext traffic for local development
-    // Using 'http' scheme to match the backend API protocol
-    androidScheme: 'http',
-    cleartext: true
+    // Use HTTPS for Netlify API connections
+    androidScheme: 'https',
+    // Allow cleartext for mixed content if needed
+    cleartext: false
   },
   plugins: {
     // Configure plugins here as needed

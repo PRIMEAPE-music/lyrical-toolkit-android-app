@@ -1,11 +1,26 @@
 /**
  * API Configuration
- * Central configuration for API calls to self-hosted backend
+ * Central configuration for API calls via Netlify functions
  */
 
-// API Base URL - points to your Express.js server
-// Using local IP address so Android devices on the same network can connect
-export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://192.168.1.32:5001/api';
+// Get Netlify URL from environment variable
+const NETLIFY_URL = process.env.REACT_APP_NETLIFY_URL || 'https://lyrical-toolkit.netlify.app';
+
+// Detect if we're on Netlify domain or mobile app
+const getBaseURL = () => {
+  // If we're on a Netlify domain, use relative path
+  if (typeof window !== 'undefined' &&
+      (window.location.hostname.includes('netlify.app') ||
+       window.location.hostname.includes('.netlify.com'))) {
+    return '/.netlify/functions';
+  }
+
+  // For Android/mobile app, use full Netlify URL
+  return `${NETLIFY_URL}/.netlify/functions`;
+};
+
+export const API_BASE_URL = getBaseURL();
+export const AUTH_BASE_URL = API_BASE_URL; // Same for auth
 
 /**
  * Get authentication headers with access token

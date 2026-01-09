@@ -98,6 +98,7 @@ const LyricsSearchAppContent = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('upload');
   const [selectedSong, setSelectedSong] = useState(null);
+  const [storageType, setStorageType] = useState('local'); // 'local' or 'database'
   
   // Audio-related state
   const [selectedSongForAudio, setSelectedSongForAudio] = useState(null);
@@ -159,20 +160,27 @@ const LyricsSearchAppContent = () => {
   // Stats filter
   const [selectedStatsFilter, setSelectedStatsFilter] = useState('all');
 
-  // Helper function to save and reload songs
+  // Helper function to save and reload songs (storage-aware)
   const saveAndReloadSongs = async (songsToSave = null) => {
-    if (!isAuthenticated) return;
-    
     try {
       const actualSongs = songsToSave || songs;
-      console.log('💾 Saving', actualSongs.length, 'songs to server...');
-      await saveUserSongs(actualSongs);
-      console.log('✅ Songs saved, reloading...');
-      
-      // Reload from server to get UUIDs
-      const allSongs = await loadAllSongs(isAuthenticated);
+      console.log('💾 Saving', actualSongs.length, 'songs to', storageType, '...');
+
+      if (storageType === 'database' && isAuthenticated) {
+        // Save to database via API
+        const songsService = await import('./services/songsService');
+        await songsService.saveSongs(actualSongs);
+        console.log('✅ Songs saved to database, reloading...');
+      } else {
+        // Save to local storage
+        await saveUserSongs(actualSongs);
+        console.log('✅ Songs saved to localStorage, reloading...');
+      }
+
+      // Reload from appropriate storage
+      const allSongs = await loadAllSongs(isAuthenticated, storageType);
       setSongs(allSongs);
-      console.log('✅ Reloaded', allSongs.length, 'songs with server IDs');
+      console.log('✅ Reloaded', allSongs.length, 'songs from', storageType);
     } catch (error) {
       console.error('❌ Failed to save/reload songs:', error);
     }
@@ -218,21 +226,21 @@ const LyricsSearchAppContent = () => {
     setShowAuthModal(false);
   };
   
-  // Load songs when authentication state changes or on initial load
+  // Load songs when authentication state changes or storage type changes
   useEffect(() => {
     const loadSongs = async () => {
       try {
-        console.log('🔄 Loading songs, authenticated:', isAuthenticated);
-        const allSongs = await loadAllSongs(isAuthenticated);
+        console.log('🔄 Loading songs, authenticated:', isAuthenticated, 'storageType:', storageType);
+        const allSongs = await loadAllSongs(isAuthenticated, storageType);
         setSongs(allSongs);
-        console.log('✅ Loaded', allSongs.length, 'songs');
+        console.log('✅ Loaded', allSongs.length, 'songs from', storageType);
       } catch (error) {
         console.error('Failed to load songs:', error);
       }
     };
 
     loadSongs();
-  }, [isAuthenticated]); // Reload whenever auth state changes
+  }, [isAuthenticated, storageType]); // Reload whenever auth state or storage type changes
 
   // Reset stats filter when songs change
   useEffect(() => {
@@ -453,6 +461,69 @@ const LyricsSearchAppContent = () => {
   };
 
   // Delete individual song
+  // Handle storage type change
+  const handleStorageTypeChange = async (newStorageType) => {
+    if (newStorageType === 'database' && !isAuthenticated) {
+      alert('Please log in to use database storage');
+      return;
+    }
+
+    console.log('🔄 Switching storage type from', storageType, 'to', newStorageType);
+    setStorageType(newStorageType);
+
+    // Songs will automatically reload via useEffect dependency on storageType
+  };
+
+  // Transfer song between storage types
+  const handleTransferSong = async (song) => {
+    const targetStorage = storageType === 'local' ? 'database' : 'local';
+
+    // Check authentication for database transfer
+    if (targetStorage === 'database' && !isAuthenticated) {
+      alert('Please log in to transfer songs to the database');
+      return;
+    }
+
+    // Confirm transfer
+    const confirmMessage = `Transfer "${song.title}" to ${targetStorage === 'database' ? 'Database (Cloud)' : 'Local Storage'}?`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      console.log(`🔄 Transferring song "${song.title}" from ${storageType} to ${targetStorage}`);
+
+      // Save to target storage
+      if (targetStorage === 'database') {
+        const songsService = await import('./services/songsService');
+        await songsService.createSong(null, {
+          title: song.title,
+          content: song.lyrics || song.content,
+          filename: song.filename
+        });
+        console.log('✅ Song saved to database');
+      } else {
+        // Save to local storage
+        const songStorageModule = await import('./utils/songStorage');
+        const currentLocalSongs = await songStorageModule.loadUserSongs(false);
+        const newSong = {
+          ...song,
+          id: Date.now() + Math.random(), // Generate new ID for local storage
+          dateAdded: new Date().toISOString()
+        };
+        await saveUserSongs([...currentLocalSongs, newSong]);
+        console.log('✅ Song saved to localStorage');
+      }
+
+      // Success message
+      alert(`✅ Song "${song.title}" copied to ${targetStorage === 'database' ? 'Database' : 'Local Storage'}!\n\nNote: The original remains in ${storageType}. Switch tabs to see the copy, or delete the original if you want to move it completely.`);
+
+    } catch (error) {
+      console.error('❌ Failed to transfer song:', error);
+      alert(`Failed to transfer song: ${error.message}`);
+    }
+  };
+
   const deleteSong = async (songId) => {
     // Add confirmation dialog
     const confirmDelete = window.confirm('Are you sure you want to delete this song? This cannot be undone.');
@@ -472,12 +543,6 @@ const LyricsSearchAppContent = () => {
       const updatedSongs = songs.filter(song => song.id !== songId);
       setSongs(updatedSongs);
 
-      // IMPORTANT: Save to localStorage immediately (don't rely on debounced auto-save)
-      // This ensures the delete persists even if the app closes quickly
-      console.log('💾 Saving songs to localStorage after delete...');
-      await saveUserSongs(updatedSongs);
-      console.log('✅ Songs saved to localStorage');
-
       // Also delete associated audio file from IndexedDB if it exists
       if (songToDelete && songToDelete.audioFileUrl && songToDelete.audioFileUrl.startsWith('indexeddb://')) {
         try {
@@ -490,11 +555,16 @@ const LyricsSearchAppContent = () => {
         }
       }
 
-      // If user is authenticated, delete from server too
-      if (isAuthenticated) {
-        console.log('🗑️ Deleting song from server with ID:', songId);
+      // Delete from appropriate storage
+      if (storageType === 'database' && isAuthenticated) {
+        console.log('🗑️ Deleting song from database with ID:', songId);
         await deleteSongFromServer(songId);
-        console.log('✅ Song deleted from server');
+        console.log('✅ Song deleted from database');
+      } else {
+        // Save to localStorage after delete
+        console.log('💾 Saving songs to localStorage after delete...');
+        await saveUserSongs(updatedSongs);
+        console.log('✅ Songs saved to localStorage');
       }
     } catch (error) {
       console.error('❌ Error deleting song:', error);
@@ -506,14 +576,12 @@ const LyricsSearchAppContent = () => {
       // Rollback - restore the song
       setSongs(originalSongs);
 
-      // Optionally reload from server to ensure sync
-      if (isAuthenticated) {
-        try {
-          const allSongs = await loadAllSongs(isAuthenticated);
-          setSongs(allSongs);
-        } catch (reloadError) {
-          console.error('Failed to reload songs after delete error:', reloadError);
-        }
+      // Reload from appropriate storage to ensure sync
+      try {
+        const allSongs = await loadAllSongs(isAuthenticated, storageType);
+        setSongs(allSongs);
+      } catch (reloadError) {
+        console.error('Failed to reload songs after delete error:', reloadError);
       }
     }
   };
@@ -527,10 +595,6 @@ const LyricsSearchAppContent = () => {
         setHighlightWord('');
         setSearchHistory([]);
 
-        // Clear from localStorage
-        await clearUserSongs();
-        console.log('✅ Songs cleared from localStorage');
-
         // Clear all audio files from IndexedDB
         try {
           await audioStorageService.clearAllAudioFiles();
@@ -538,6 +602,16 @@ const LyricsSearchAppContent = () => {
         } catch (audioError) {
           console.warn('⚠️ Could not clear audio files:', audioError);
           // Don't fail the whole operation
+        }
+
+        // Clear from appropriate storage
+        if (storageType === 'database' && isAuthenticated) {
+          const songsService = await import('./services/songsService');
+          await songsService.clearAllSongs();
+          console.log('✅ Songs cleared from database');
+        } else {
+          await clearUserSongs();
+          console.log('✅ Songs cleared from localStorage');
         }
 
         saveExampleSongDeleted(false); // Reset so example can load again
@@ -1487,6 +1561,11 @@ const LyricsSearchAppContent = () => {
                 onAudioDownload={handleAudioDownload}
                 onAudioRemove={handleAudioRemove}
                 userId={user?.userId || 'anonymous'}
+                // Storage type props
+                storageType={storageType}
+                onStorageTypeChange={handleStorageTypeChange}
+                isAuthenticated={isAuthenticated}
+                onTransferSong={handleTransferSong}
                 // Draft-related props
                 onCreateDraft={handleCreateDraft}
                 onDeleteDraft={handleDeleteDraft}

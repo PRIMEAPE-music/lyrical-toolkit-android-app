@@ -151,10 +151,21 @@ export const loadSongsForUnauthenticated = async () => {
   return exampleSong ? [exampleSong] : [];
 };
 
-// Universal song loading function
-export const loadAllSongs = async (isAuthenticated = false) => {
-  // Since we're localStorage-only now, authentication doesn't matter
-  // Just load songs with example fallback
+// Universal song loading function with storage type support
+export const loadAllSongs = async (isAuthenticated = false, storageType = 'local') => {
+  if (storageType === 'database' && isAuthenticated) {
+    // Load from database via API
+    const songsService = await import('../services/songsService');
+    try {
+      const result = await songsService.getSongsWithExample(isAuthenticated);
+      return result.songs || [];
+    } catch (error) {
+      console.error('Failed to load from database, falling back to local:', error);
+      return await loadUserSongs(true);
+    }
+  }
+
+  // Default to local storage
   return await loadUserSongs(true);
 };
 
