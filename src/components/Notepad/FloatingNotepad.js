@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Edit3, Minimize2, Maximize2, Download, Upload, Save, RotateCcw, Plus, Expand, Shrink, ChevronsUpDown } from 'lucide-react';
 import AudioPlayer from '../Audio/AudioPlayer';
 import NotepadTabBar from './NotepadTabBar';
+import { Keyboard } from '@capacitor/keyboard';
 
 const FloatingNotepad = ({
   notepadState,
@@ -55,6 +56,7 @@ const FloatingNotepad = ({
   // Mobile detection - simplified
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
     const handleResize = () => {
@@ -65,23 +67,48 @@ const FloatingNotepad = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Detect keyboard open/close using Visual Viewport API
+  // Track keyboard state using Capacitor Keyboard plugin
+  const [capacitorKeyboardHeight, setCapacitorKeyboardHeight] = useState(0);
+  const [isCapacitorKeyboardVisible, setIsCapacitorKeyboardVisible] = useState(false);
+
+  // Use Capacitor Keyboard plugin for accurate keyboard detection
   useEffect(() => {
-    if (!isMobile || !window.visualViewport) return;
+    if (!isMobile) return;
 
-    const handleViewportResize = () => {
-      // When keyboard opens, visual viewport height decreases significantly
-      const viewportHeight = window.visualViewport.height;
-      const windowHeight = window.innerHeight;
-      const heightDiff = windowHeight - viewportHeight;
+    let showListener;
+    let hideListener;
 
-      // If viewport is more than 150px smaller than window, keyboard is likely open
-      setIsKeyboardOpen(heightDiff > 150);
+    const setupKeyboardListeners = async () => {
+      try {
+        showListener = await Keyboard.addListener('keyboardWillShow', (info) => {
+          setCapacitorKeyboardHeight(info.keyboardHeight);
+          setIsCapacitorKeyboardVisible(true);
+          setIsKeyboardOpen(true);
+          setKeyboardHeight(info.keyboardHeight);
+        });
+
+        hideListener = await Keyboard.addListener('keyboardWillHide', () => {
+          setCapacitorKeyboardHeight(0);
+          setIsCapacitorKeyboardVisible(false);
+          setIsKeyboardOpen(false);
+          setKeyboardHeight(0);
+        });
+      } catch (e) {
+        // Keyboard plugin not available (running in browser), fall back to visual viewport
+        console.log('Capacitor Keyboard plugin not available, using fallback');
+      }
     };
 
-    window.visualViewport.addEventListener('resize', handleViewportResize);
-    return () => window.visualViewport.removeEventListener('resize', handleViewportResize);
+    setupKeyboardListeners();
+
+    return () => {
+      if (showListener) showListener.remove();
+      if (hideListener) hideListener.remove();
+    };
   }, [isMobile]);
+
+  // Keyboard is visible when Capacitor reports it
+  const keyboardVisible = isMobile && isCapacitorKeyboardVisible;
   
   // Toggle fullscreen
   const toggleFullscreen = () => {
@@ -625,7 +652,10 @@ const FloatingNotepad = ({
         onClick={(e) => e.stopPropagation()}
         className={`fixed flex items-center justify-center cursor-ns-resize z-[999999]`}
         style={{
-          bottom: `${tempPosition.bottom + (isKeyboardOpen ? 0 : 64) + tempDimensions.height}px`,
+          // Position handle above notepad - adjust for keyboard state
+          bottom: keyboardVisible
+            ? `${tempDimensions.height}px`
+            : `${tempPosition.bottom + 80 + tempDimensions.height}px`,
           // Center the handle: notepad right edge + half notepad width - half handle width
           right: `${tempPosition.right + (tempDimensions.width / 2) - (tempDimensions.width * 0.25 / 2)}px`,
           width: `${tempDimensions.width * 0.25}px`,
@@ -686,8 +716,14 @@ const FloatingNotepad = ({
             }
           : {
               // Expanded: Floating window
-              // When keyboard is open, reduce offset since BottomNav is hidden by keyboard
-              bottom: isMobile ? `${tempPosition.bottom + (isKeyboardOpen ? 0 : 64)}px` : `${tempPosition.bottom}px`,
+              // When keyboard is open on mobile, use TOP positioning based on visual viewport
+              // This ensures the notepad sits just above the keyboard
+              // On mobile: position based on keyboard state using Capacitor keyboard height
+              // When keyboard visible, position at bottom of screen (adjustResize shrinks viewport)
+              // When keyboard hidden, position above bottom nav bar
+              bottom: isMobile
+                ? (keyboardVisible ? '0px' : `${tempPosition.bottom + 80}px`)
+                : `${tempPosition.bottom}px`,
               right: isMobile ? `calc(${Math.max(tempPosition.right, 8)}px + env(safe-area-inset-right, 0px))` : `${tempPosition.right}px`,
               width: isMobile ? `calc(${tempDimensions.width}px - env(safe-area-inset-right, 0px))` : `${tempDimensions.width}px`,
               height: `${tempDimensions.height}px`,
@@ -696,13 +732,15 @@ const FloatingNotepad = ({
               overflow: 'hidden',
               minWidth: '200px',
               minHeight: '200px',
-              border: darkMode ? '2px solid white !important' : '2px solid #6b7280 !important'
+              border: darkMode ? '2px solid white !important' : '2px solid #6b7280 !important',
+              display: 'flex',
+              flexDirection: 'column'
             }
       }
     >
       {/* Header - Contains title and buttons */}
       <div
-        className={`flex items-center justify-between p-2 ${
+        className={`flex-shrink-0 flex items-center justify-between p-2 ${
           isMinimized ? '' : 'border-b'
         } ${
           darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'
@@ -840,14 +878,16 @@ const FloatingNotepad = ({
 
       {/* Tab Bar - Show when not minimized and tabs exist */}
       {!isMinimized && openTabs.length > 0 && (
-        <NotepadTabBar
-          tabs={openTabs}
-          activeTabIndex={activeTabIndex}
-          onSwitchTab={onSwitchTab}
-          onCloseTab={onCloseTab}
-          getTabDisplayName={getTabDisplayName}
-          darkMode={darkMode}
-        />
+        <div className="flex-shrink-0">
+          <NotepadTabBar
+            tabs={openTabs}
+            activeTabIndex={activeTabIndex}
+            onSwitchTab={onSwitchTab}
+            onCloseTab={onCloseTab}
+            getTabDisplayName={getTabDisplayName}
+            darkMode={darkMode}
+          />
+        </div>
       )}
 
       {/* Audio Player Spacer - reserves space when audio exists (actual player is in portal) */}
@@ -863,60 +903,57 @@ const FloatingNotepad = ({
 
       {/* Content - Full-size textarea when not minimized */}
       {!isMinimized && (
-        <div 
-          className="flex-1 w-full relative overflow-visible"
-          style={{ 
-            height: isMobile && isFullscreen ? (currentSongAudio ? 'calc(100vh - 49px - 60px)' : 'calc(100vh - 49px)') : (currentSongAudio ? 'calc(100% - 49px - 60px)' : 'calc(100% - 49px)'),
-            minHeight: isMobile && isFullscreen ? '200px' : '150px',
-            width: '100%'
+        <textarea
+          value={content}
+          onChange={handleContentChange}
+          onFocus={() => setIsTextareaFocused(true)}
+          onBlur={() => setIsTextareaFocused(false)}
+          placeholder="Start writing your lyrics..."
+          className={`flex-1 resize-none border-none outline-none text-sm p-3 ${
+            darkMode
+              ? 'bg-gray-800 text-gray-300 placeholder-gray-500'
+              : 'bg-white text-gray-900 placeholder-gray-400'
+          }`}
+          style={{
+            width: '100%',
+            minHeight: '0',
+            resize: 'none',
+            border: 'none',
+            outline: 'none',
+            boxSizing: 'border-box'
           }}
+        />
+      )}
+
+      {/* Bottom bar with word count and fullscreen button - separate from textarea */}
+      {!isMinimized && (
+        <div
+          className={`flex-shrink-0 flex items-center justify-between px-2 py-1 border-t ${
+            darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'
+          }`}
+          style={{ minHeight: '36px' }}
         >
-          <textarea
-            value={content}
-            onChange={handleContentChange}
-            placeholder="Start writing your lyrics..."
-            className={`w-full h-full resize-none border-none outline-none text-sm p-3 block ${
-              darkMode 
-                ? 'bg-gray-800 text-gray-300 placeholder-gray-500' 
-                : 'bg-white text-gray-900 placeholder-gray-400'
+          {/* Character count */}
+          <div
+            className={`text-xs ${
+              darkMode ? 'text-gray-400' : 'text-gray-600'
             }`}
-            style={{ 
-              width: '100%', 
-              height: '100%',
-              minHeight: '150px',
-              resize: 'none',
-              border: 'none',
-              outline: 'none',
-              boxSizing: 'border-box',
-              display: 'block',
-              textAlign: 'left'
-            }}
-          />
-          
-          {/* Fullscreen toggle button - bottom right corner, mobile only via CSS */}
+          >
+            {content.trim() ? content.trim().split(/\s+/).length : 0} words • {content.length} chars
+          </div>
+
+          {/* Fullscreen toggle button */}
           <button
             onClick={toggleFullscreen}
-            className={`absolute w-10 h-10 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center mobile-fullscreen-btn ${
+            className={`w-8 h-8 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center mobile-fullscreen-btn ${
               darkMode
                 ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
                 : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300'
-            } hover:scale-110 z-20`}
-            style={{
-              bottom: '24px',
-              right: '12px',
-              left: 'auto'
-            }}
+            } hover:scale-110`}
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
           >
-            {isFullscreen ? <Shrink className="w-5 h-5" /> : <Expand className="w-5 h-5" />}
+            {isFullscreen ? <Shrink className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
           </button>
-          
-          {/* Character count - positioned in bottom left corner on mobile, bottom right on desktop */}
-          <div className={`absolute bottom-2 text-xs pointer-events-none mobile-char-count ${
-            darkMode ? 'text-gray-500' : 'text-gray-400'
-          }`}>
-            {content.trim() ? content.trim().split(/\s+/).length : 0} words • {content.length} chars
-          </div>
         </div>
       )}
 
@@ -1218,13 +1255,17 @@ const FloatingNotepad = ({
             }}
           />
           
-          {/* Character count - positioned in bottom right */}
+          {/* Character count - positioned in bottom left on mobile, bottom right on desktop */}
           <div style={{
             position: 'absolute',
             bottom: '8px',
-            right: '8px',
+            left: isMobile ? '8px' : 'auto',
+            right: isMobile ? 'auto' : '8px',
             fontSize: '12px',
-            color: darkMode ? '#9ca3af' : '#6b7280',
+            color: darkMode ? '#d1d5db' : '#374151',
+            backgroundColor: darkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+            padding: '4px 8px',
+            borderRadius: '4px',
             pointerEvents: 'none'
           }}>
             {content.trim() ? content.trim().split(/\s+/).length : 0} words • {content.length} chars

@@ -1139,10 +1139,20 @@ const LyricsSearchAppContent = () => {
       setSongs(updatedSongs);
       await saveSongsToStorage(updatedSongs);
     } else {
-      // Saving main song
+      // Saving main song - calculate word/line counts locally for real-time UI updates
+      const words = currentContent.split(/\s+/).filter(word => word.trim()).length;
+      const lines = currentContent.split('\n').filter(line => line.trim()).length;
+
       const updatedSongs = songs.map(s =>
         s.id === songId
-          ? { ...s, title: currentTitle, lyrics: currentContent, content: currentContent }
+          ? {
+              ...s,
+              title: currentTitle,
+              lyrics: currentContent,
+              content: currentContent,
+              wordCount: words,
+              lineCount: lines
+            }
           : s
       );
       setSongs(updatedSongs);

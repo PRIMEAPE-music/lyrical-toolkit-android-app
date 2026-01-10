@@ -260,13 +260,13 @@ const UploadTab = ({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-0.5 md:gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-px md:gap-1 flex-wrap">
                     {/* Audio button - directly opens file picker */}
                     {onAudioUpload && (
                       <button
                         onClick={() => handleMusicIconClick(song)}
                         disabled={isUploading}
-                        className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                        className={`text-xs px-0.5 py-0.5 rounded transition-colors ${
                           isUploading && uploadingSongId === song.id
                             ? darkMode
                               ? 'bg-yellow-700 text-yellow-200 cursor-wait'
@@ -290,7 +290,7 @@ const UploadTab = ({
                     )}
                     <button
                       onClick={() => onSongSelect(song)}
-                      className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                      className={`text-xs px-0.5 py-0.5 rounded transition-colors ${
                         darkMode ? 'bg-white hover:bg-gray-100 text-black' : 'bg-gray-200 hover:bg-gray-300 text-black'
                       }`}
                       title="View lyrics"
@@ -299,7 +299,7 @@ const UploadTab = ({
                     </button>
                     <button
                       onClick={() => onEditSong(song)}
-                      className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                      className={`text-xs px-0.5 py-0.5 rounded transition-colors ${
                         darkMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-200' : 'bg-blue-200 hover:bg-blue-300 text-blue-700'
                       }`}
                       title="Edit song"
@@ -311,7 +311,7 @@ const UploadTab = ({
                       <button
                         onClick={() => onTransferSong(song)}
                         disabled={storageType === 'local' && !isAuthenticated}
-                        className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                        className={`text-xs px-0.5 py-0.5 rounded transition-colors ${
                           storageType === 'local' && !isAuthenticated
                             ? 'bg-gray-400 cursor-not-allowed opacity-50'
                             : darkMode
@@ -337,7 +337,7 @@ const UploadTab = ({
                     />
                     <button
                       onClick={() => onDeleteSong(song.id)}
-                      className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                      className={`text-xs px-0.5 py-0.5 rounded transition-colors ${
                         darkMode
                           ? 'bg-white hover:bg-gray-100 text-black'
                           : 'bg-gray-200 hover:bg-gray-300 text-red-600'
