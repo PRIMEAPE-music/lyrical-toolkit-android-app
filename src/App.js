@@ -889,7 +889,7 @@ const LyricsSearchAppContent = () => {
     const sanitizedTitle = DOMPurify.sanitize(notepadState.title || 'Untitled');
     const sanitizedContent = DOMPurify.sanitize(notepadState.content);
 
-    const newSong = {
+    let newSong = {
       id: Date.now() + Math.random(),
       title: sanitizedTitle,
       lyrics: sanitizedContent,
@@ -900,24 +900,46 @@ const LyricsSearchAppContent = () => {
       fromNotepad: true
     };
 
-    setSongs(prev => [newSong, ...prev]);
+    try {
+      if (storageType === 'database' && isAuthenticated) {
+        // For database: Create only the new song via API (avoid duplicates)
+        console.log('💾 Creating new song in database...');
+        const songsService = await import('./services/songsService');
+        const createdSong = await songsService.createSong(null, {
+          title: sanitizedTitle,
+          content: sanitizedContent,
+          filename: `${sanitizedTitle}.txt`
+        });
+        // Use the server-generated ID
+        newSong = { ...newSong, ...createdSong };
+        console.log('✅ Song created in database with ID:', newSong.id);
+      } else {
+        // For local storage: Save the full updated array
+        console.log('💾 Saving new song to localStorage...');
+        const updatedSongs = [newSong, ...songs];
+        await saveUserSongs(updatedSongs);
+        console.log('✅ Song saved to localStorage');
+      }
 
-    // Save and reload to get UUID from server
-    if (isAuthenticated) {
-      await saveAndReloadSongs();
+      // Update local state with the new song
+      setSongs(prev => [newSong, ...prev]);
+
+      // Update the current tab to point to the new song (instead of clearing)
+      if (openTabs.length > 0) {
+        updateTabSongId(activeTabIndex, newSong.id);
+      }
+
+      // Clear new tab content state since it's now a saved song
+      setNewTabContent({ content: '', title: 'Untitled' });
+
+      // Update notepad to show we're now editing this song
+      notepadState.setCurrentEditingSongId(newSong.id);
+      setOriginalSongContent(sanitizedContent);
+
+    } catch (error) {
+      console.error('❌ Failed to upload song:', error);
+      alert(`Failed to save song: ${error.message}`);
     }
-
-    // Update the current tab to point to the new song (instead of clearing)
-    if (openTabs.length > 0) {
-      updateTabSongId(activeTabIndex, newSong.id);
-    }
-
-    // Clear new tab content state since it's now a saved song
-    setNewTabContent({ content: '', title: 'Untitled' });
-
-    // Update notepad to show we're now editing this song
-    notepadState.setCurrentEditingSongId(newSong.id);
-    setOriginalSongContent(sanitizedContent);
   };
 
   const handleSaveChanges = async () => {

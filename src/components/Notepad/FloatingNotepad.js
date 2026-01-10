@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Edit3, Minimize2, Maximize2, Download, Upload, Save, RotateCcw, Plus, Expand, Shrink, ChevronsUpDown } from 'lucide-react';
 import AudioPlayer from '../Audio/AudioPlayer';
 import NotepadTabBar from './NotepadTabBar';
@@ -53,15 +54,34 @@ const FloatingNotepad = ({
   
   // Mobile detection - simplified
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth <= 768);
     };
-    
+
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Detect keyboard open/close using Visual Viewport API
+  useEffect(() => {
+    if (!isMobile || !window.visualViewport) return;
+
+    const handleViewportResize = () => {
+      // When keyboard opens, visual viewport height decreases significantly
+      const viewportHeight = window.visualViewport.height;
+      const windowHeight = window.innerHeight;
+      const heightDiff = windowHeight - viewportHeight;
+
+      // If viewport is more than 150px smaller than window, keyboard is likely open
+      setIsKeyboardOpen(heightDiff > 150);
+    };
+
+    window.visualViewport.addEventListener('resize', handleViewportResize);
+    return () => window.visualViewport.removeEventListener('resize', handleViewportResize);
+  }, [isMobile]);
   
   // Toggle fullscreen
   const toggleFullscreen = () => {
@@ -477,32 +497,120 @@ const FloatingNotepad = ({
     updateTitle(e.target.value);
   };
 
-  // Render FAB for mobile when minimized
+  // Track audio player container ref for portal positioning
+  // (Must be declared before early returns to follow React hooks rules)
+  const audioContainerRef = useRef(null);
+  const [audioPosition, setAudioPosition] = useState({ top: 0, left: 0, width: 0 });
+
+  // Update audio position when container or state changes
+  useEffect(() => {
+    const updatePosition = () => {
+      if (audioContainerRef.current && !isMinimized && !isFullscreen) {
+        const rect = audioContainerRef.current.getBoundingClientRect();
+        setAudioPosition({
+          top: rect.top,
+          left: rect.left,
+          width: rect.width
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition);
+
+    // Also update when notepad position/dimensions change
+    const interval = setInterval(updatePosition, 100);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition);
+      clearInterval(interval);
+    };
+  }, [isMinimized, isFullscreen, tempPosition, tempDimensions]);
+
+  // Persistent Audio Player Portal - must render even when minimized to preserve audio state
+  const persistentAudioPlayer = currentSongAudio && createPortal(
+    <div
+      id="persistent-notepad-audio"
+      className={`flex-shrink-0 w-full ${
+        darkMode ? 'bg-gray-800' : 'bg-white'
+      }`}
+      style={{
+        position: 'fixed',
+        zIndex: 1000000,
+        ...(isMinimized ? {
+          // Hidden when minimized but keep mounted
+          opacity: 0,
+          pointerEvents: 'none',
+          top: '-9999px'
+        } : isFullscreen ? {
+          // Fullscreen: position at top after header and tabs
+          top: `calc(max(32px, calc(8px + env(safe-area-inset-top, 24px))) + 49px${openTabs.length > 0 ? ' + 36px' : ''})`,
+          left: 0,
+          right: 0,
+          borderBottom: darkMode ? '1px solid #4B5563' : '1px solid #E5E7EB'
+        } : audioPosition.width > 0 ? {
+          // Normal expanded: position over the spacer
+          top: audioPosition.top + 'px',
+          left: audioPosition.left + 'px',
+          width: audioPosition.width + 'px',
+          borderBottom: darkMode ? '1px solid #4B5563' : '1px solid #E5E7EB'
+        } : {
+          display: 'none'
+        })
+      }}
+    >
+      <AudioPlayer
+        key={`persistent-audio-${currentSongAudio.url}`}
+        audioUrl={currentSongAudio.url}
+        audioFilename={currentSongAudio.filename}
+        audioSize={currentSongAudio.size}
+        audioDuration={currentSongAudio.duration}
+        darkMode={darkMode}
+        onDownload={onAudioDownload}
+        onRemove={onAudioRemove}
+        onReplace={onAudioReplace}
+        showControls={true}
+        compact={true}
+        hideMenu={true}
+      />
+    </div>,
+    document.body
+  );
+
+  // Render FAB for mobile when minimized (but still include audio portal)
   if (isMinimized && isMobile && !isFullscreen) {
     return (
-      <button
-        onClick={toggleMinimized}
-        className={`fixed rounded-full shadow-2xl transition-all duration-300 z-[999999] flex items-center justify-center ${
-          darkMode
-            ? 'bg-gray-800 border-white border-2 hover:bg-gray-700'
-            : 'bg-white border-gray-500 border-2 hover:bg-gray-100'
-        }`}
-        style={{
-          bottom: `calc(80px + env(safe-area-inset-bottom, 0px))`, // 80px = 64px bottom nav + 16px spacing
-          right: `calc(16px + env(safe-area-inset-right, 0px))`,
-          width: '56px',
-          height: '56px'
-        }}
-        title="Open Notepad"
-        aria-label="Open Notepad"
-      >
-        <Edit3 className={`w-6 h-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} />
-      </button>
+      <>
+        {persistentAudioPlayer}
+        <button
+          onClick={toggleMinimized}
+          className={`fixed rounded-full shadow-2xl transition-all duration-300 z-[999999] flex items-center justify-center ${
+            darkMode
+              ? 'bg-gray-800 border-white border-2 hover:bg-gray-700'
+              : 'bg-white border-gray-500 border-2 hover:bg-gray-100'
+          }`}
+          style={{
+            bottom: `calc(80px + env(safe-area-inset-bottom, 0px))`, // 80px = 64px bottom nav + 16px spacing
+            right: `calc(16px + env(safe-area-inset-right, 0px))`,
+            width: '56px',
+            height: '56px'
+          }}
+          title="Open Notepad"
+          aria-label="Open Notepad"
+        >
+          <Edit3 className={`w-6 h-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} />
+        </button>
+      </>
     );
   }
 
   return (
     <>
+    {/* Persistent Audio Player - Rendered via portal to survive fullscreen/minimize transitions */}
+    {persistentAudioPlayer}
+
     {/* Mobile Drag Handle - Shows above notepad when expanded on mobile */}
     {!isFullscreen && !isMinimized && isMobile && (
       <div
@@ -517,7 +625,7 @@ const FloatingNotepad = ({
         onClick={(e) => e.stopPropagation()}
         className={`fixed flex items-center justify-center cursor-ns-resize z-[999999]`}
         style={{
-          bottom: `${tempPosition.bottom + 64 + tempDimensions.height}px`,
+          bottom: `${tempPosition.bottom + (isKeyboardOpen ? 8 : 64) + tempDimensions.height}px`,
           // Center the handle: notepad right edge + half notepad width - half handle width
           right: `${tempPosition.right + (tempDimensions.width / 2) - (tempDimensions.width * 0.25 / 2)}px`,
           width: `${tempDimensions.width * 0.25}px`,
@@ -578,7 +686,8 @@ const FloatingNotepad = ({
             }
           : {
               // Expanded: Floating window
-              bottom: isMobile ? `${tempPosition.bottom + 64}px` : `${tempPosition.bottom}px`, // 64px = BottomNav height on mobile
+              // When keyboard is open, reduce offset since BottomNav is hidden by keyboard
+              bottom: isMobile ? `${tempPosition.bottom + (isKeyboardOpen ? 8 : 64)}px` : `${tempPosition.bottom}px`,
               right: isMobile ? `calc(${Math.max(tempPosition.right, 8)}px + env(safe-area-inset-right, 0px))` : `${tempPosition.right}px`,
               width: isMobile ? `calc(${tempDimensions.width}px - env(safe-area-inset-right, 0px))` : `${tempDimensions.width}px`,
               height: `${tempDimensions.height}px`,
@@ -741,25 +850,15 @@ const FloatingNotepad = ({
         />
       )}
 
-      {/* Audio Player Bar - Show between header and content when audio exists */}
+      {/* Audio Player Spacer - reserves space when audio exists (actual player is in portal) */}
       {!isMinimized && currentSongAudio && (
-        <div className={`flex-shrink-0 border-b w-full ${
-          darkMode ? 'border-gray-600' : 'border-gray-200'
-        }`}>
-          <AudioPlayer
-            audioUrl={currentSongAudio.url}
-            audioFilename={currentSongAudio.filename}
-            audioSize={currentSongAudio.size}
-            audioDuration={currentSongAudio.duration}
-            darkMode={darkMode}
-            onDownload={onAudioDownload}
-            onRemove={onAudioRemove}
-            onReplace={onAudioReplace}
-            showControls={true}
-            compact={true}
-            hideMenu={true}
-          />
-        </div>
+        <div
+          className={`flex-shrink-0 border-b w-full ${
+            darkMode ? 'border-gray-600' : 'border-gray-200'
+          }`}
+          style={{ minHeight: '52px' }}
+          ref={audioContainerRef}
+        />
       )}
 
       {/* Content - Full-size textarea when not minimized */}
@@ -1084,28 +1183,14 @@ const FloatingNotepad = ({
           />
         )}
 
-        {/* Audio Player Bar - Same as regular notepad if audio exists */}
+        {/* Audio Player Spacer - reserves space (actual player is in portal) */}
         {currentSongAudio && (
-          <div 
+          <div
             className={`flex-shrink-0 border-b w-full ${
               darkMode ? 'border-gray-600' : 'border-gray-200'
             }`}
-            style={{ minHeight: '60px' }}
-          >
-            <AudioPlayer
-              audioUrl={currentSongAudio.url}
-              audioFilename={currentSongAudio.filename}
-              audioSize={currentSongAudio.size}
-              audioDuration={currentSongAudio.duration}
-              darkMode={darkMode}
-              onDownload={onAudioDownload}
-              onRemove={onAudioRemove}
-              onReplace={onAudioReplace}
-              showControls={true}
-              compact={true}
-              hideMenu={true}
-            />
-          </div>
+            style={{ minHeight: '52px' }}
+          />
         )}
 
         {/* Fullscreen Textarea */}

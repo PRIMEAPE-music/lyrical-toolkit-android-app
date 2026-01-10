@@ -54,6 +54,7 @@ const AudioPlayer = ({
   const [waveformLoading, setWaveformLoading] = useState(false);
   const [currentRegion, setCurrentRegion] = useState(null);
   const currentRegionRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(false);
   
   // Debug re-renders
   useEffect(() => {
@@ -67,6 +68,17 @@ const AudioPlayer = ({
     //   audioUrl: !!audioUrl
     // });
   });
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
   
   const audioRef = useRef(null);
   const waveformRef = useRef(null);
@@ -782,8 +794,8 @@ const AudioPlayer = ({
               <button
                 onClick={toggleMute}
                 className={`p-1 rounded transition-colors ${
-                  darkMode 
-                    ? 'text-gray-400 hover:text-white hover:bg-gray-700' 
+                  darkMode
+                    ? 'text-gray-400 hover:text-white hover:bg-gray-700'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
               >
@@ -793,25 +805,28 @@ const AudioPlayer = ({
                   <Volume2 className="w-4 h-4" />
                 )}
               </button>
-              
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={isMuted ? 0 : volume}
-                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                className={`w-32 h-2 rounded-lg appearance-none cursor-pointer ${
-                  darkMode ? 'bg-gray-700' : 'bg-gray-200'
-                }`}
-                style={{
-                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(isMuted ? 0 : volume) * 100}%, ${
-                    darkMode ? '#374151' : '#e5e7eb'
-                  } ${(isMuted ? 0 : volume) * 100}%, ${
-                    darkMode ? '#374151' : '#e5e7eb'
-                  } 100%)`
-                }}
-              />
+
+              {/* Volume slider - hidden on mobile to save space */}
+              {!isMobile && (
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                  className={`w-32 h-2 rounded-lg appearance-none cursor-pointer ${
+                    darkMode ? 'bg-gray-700' : 'bg-gray-200'
+                  }`}
+                  style={{
+                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(isMuted ? 0 : volume) * 100}%, ${
+                      darkMode ? '#374151' : '#e5e7eb'
+                    } ${(isMuted ? 0 : volume) * 100}%, ${
+                      darkMode ? '#374151' : '#e5e7eb'
+                    } 100%)`
+                  }}
+                />
+              )}
               
               {/* Menu button - moved to after volume control */}
               {showControls && (onDownload || onRemove || onReplace) && (

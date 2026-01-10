@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Plus, FileText, Trash2, Music, Loader2, Database, HardDrive, ArrowRightLeft } from 'lucide-react';
+import { Upload, Plus, FileText, Trash2, Music, Loader2, Database, HardDrive, ArrowRightLeft, Eye, Pencil } from 'lucide-react';
 import ExportDropdown from '../Shared/ExportDropdown';
 import AudioPlayer from '../Audio/AudioPlayer';
 import audioStorageService from '../../services/audioStorageService';
@@ -293,16 +293,18 @@ const UploadTab = ({
                       className={`text-xs px-1.5 py-1 rounded transition-colors ${
                         darkMode ? 'bg-white hover:bg-gray-100 text-black' : 'bg-gray-200 hover:bg-gray-300 text-black'
                       }`}
+                      title="View lyrics"
                     >
-                      View
+                      <Eye className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
                     </button>
                     <button
                       onClick={() => onEditSong(song)}
                       className={`text-xs px-1.5 py-1 rounded transition-colors ${
                         darkMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-200' : 'bg-blue-200 hover:bg-blue-300 text-blue-700'
                       }`}
+                      title="Edit song"
                     >
-                      Edit
+                      <Pencil className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
                     </button>
                     {/* Transfer button - only show for non-example songs */}
                     {!song.isExample && onTransferSong && (

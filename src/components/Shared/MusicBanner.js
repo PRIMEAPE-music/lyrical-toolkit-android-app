@@ -10,12 +10,21 @@ const MusicBanner = () => {
     <div className="bg-gray-700 text-white py-3 px-4 relative" style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 12px))' }}>
       {/* Dismiss Button - centered vertically with content */}
       <button
-        onClick={() => setIsVisible(false)}
-        className="absolute right-2 text-black hover:text-white transition-colors z-10 dismiss-button"
-        style={{ top: '50%', transform: 'translateY(-50%)' }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsVisible(false);
+        }}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsVisible(false);
+        }}
+        className="absolute right-2 text-black hover:text-white active:text-white transition-colors z-10 dismiss-button p-2"
+        style={{ top: '50%', transform: 'translateY(-50%)', minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         title="Dismiss banner"
       >
-        <X className="w-4 h-4" />
+        <X className="w-5 h-5" />
       </button>
 
       {/* Banner Content */}

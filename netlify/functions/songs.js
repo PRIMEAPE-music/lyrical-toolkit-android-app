@@ -387,18 +387,38 @@ exports.handler = async (event, context) => {
                 }
 
             case 'DELETE':
-                // Clear all user's songs
+                // Delete single song or all songs
                 try {
+                    // Check if a song ID is provided in the path
+                    const pathParts = event.path.split('/').filter(Boolean);
+                    const songIdFromPath = pathParts[pathParts.length - 1];
+
+                    // If the last part is a UUID, delete that specific song
+                    if (songIdFromPath && isUUID(songIdFromPath)) {
+                        console.log(`Deleting single song with ID: ${songIdFromPath}`);
+                        await SongOperations.delete(userId, songIdFromPath);
+
+                        return {
+                            statusCode: 200,
+                            headers,
+                            body: JSON.stringify({
+                                message: 'Song deleted successfully',
+                                deletedId: songIdFromPath
+                            })
+                        };
+                    }
+
+                    // Otherwise, delete all songs
                     const songs = await SongOperations.getByUserId(userId);
                     const deletedCount = songs.length;
-                    
+
                     await SongOperations.deleteAll(userId);
-                    
+
                     return {
                         statusCode: 200,
                         headers,
-                        body: JSON.stringify({ 
-                            message: `Successfully deleted ${deletedCount} songs` 
+                        body: JSON.stringify({
+                            message: `Successfully deleted ${deletedCount} songs`
                         })
                     };
                 } catch (error) {
@@ -406,7 +426,7 @@ exports.handler = async (event, context) => {
                     return {
                         statusCode: 500,
                         headers,
-                        body: JSON.stringify({ error: 'Failed to delete songs' })
+                        body: JSON.stringify({ error: 'Failed to delete songs: ' + error.message })
                     };
                 }
 
