@@ -902,7 +902,7 @@ const FloatingNotepad = ({
                 : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300'
             } hover:scale-110 z-20`}
             style={{
-              bottom: '12px',
+              bottom: '24px',
               right: '12px',
               left: 'auto'
             }}
