@@ -26,7 +26,7 @@ const BottomNav = ({ activeTab, setActiveTab, darkMode }) => {
   const tabs = [
     { id: 'search', icon: Search, label: 'Search' },
     { id: 'dictionary', icon: Book, label: 'Dictionary' },
-    { id: 'upload', icon: Upload, label: 'Upload' },
+    { id: 'upload', icon: Upload, label: 'Songs' },
     { id: 'rhymes', icon: Music, label: 'Rhymes' },
     { id: 'stats', icon: BarChart3, label: 'Stats' }
   ];
@@ -49,7 +49,11 @@ const BottomNav = ({ activeTab, setActiveTab, darkMode }) => {
   const menuBgColor = darkMode ? '#374151' : '#ffffff';
   const menuBorderColor = darkMode ? '#4B5563' : '#e5e7eb';
   const menuActiveBg = darkMode ? '#4B5563' : '#f3f4f6';
-  const menuTextColor = darkMode ? '#D1D5DB' : '#6B7280';
+  const menuTextColor = darkMode ? '#D1D5DB' : '#111827';
+  // Active/inactive colors for bottom nav
+  const activeColor = darkMode ? '#FFFFFF' : '#111827';
+  const inactiveColor = darkMode ? '#9CA3AF' : '#111827';
+  const activeBgColor = darkMode ? '#374151' : '#e5e7eb';
 
   return (
     <>
@@ -84,7 +88,7 @@ const BottomNav = ({ activeTab, setActiveTab, darkMode }) => {
                   border: 'none',
                   background: isActive ? menuActiveBg : 'transparent',
                   cursor: 'pointer',
-                  color: isActive ? '#FFFFFF' : menuTextColor,
+                  color: isActive ? (darkMode ? '#FFFFFF' : '#111827') : menuTextColor,
                   textAlign: 'left',
                   borderBottom: '1px solid ' + menuBorderColor
                 }}
@@ -136,9 +140,10 @@ const BottomNav = ({ activeTab, setActiveTab, darkMode }) => {
               minHeight: '64px',
               minWidth: '48px',
               border: 'none',
-              background: 'transparent',
+              background: (isMoreTabActive || showMoreMenu) ? activeBgColor : 'transparent',
+              borderRadius: '8px',
               cursor: 'pointer',
-              color: isMoreTabActive || showMoreMenu ? '#FFFFFF' : '#9CA3AF',
+              color: (isMoreTabActive || showMoreMenu) ? activeColor : inactiveColor,
               padding: '8px 4px'
             }}
             aria-label="More options"
@@ -170,9 +175,10 @@ const BottomNav = ({ activeTab, setActiveTab, darkMode }) => {
                   minHeight: '64px',
                   minWidth: '48px',
                   border: 'none',
-                  background: 'transparent',
+                  background: isActive ? activeBgColor : 'transparent',
+                  borderRadius: '8px',
                   cursor: 'pointer',
-                  color: isActive ? '#FFFFFF' : '#9CA3AF',
+                  color: isActive ? activeColor : inactiveColor,
                   padding: '8px 4px'
                 }}
                 aria-label={label}

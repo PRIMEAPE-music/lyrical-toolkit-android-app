@@ -107,7 +107,7 @@ const UploadTab = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+        className={`border-2 border-dashed rounded-lg px-4 py-3 transition-colors flex items-center justify-between ${
           isDragging
             ? darkMode
               ? 'border-gray-500 bg-gray-800'
@@ -117,13 +117,12 @@ const UploadTab = ({
               : 'border-gray-300 hover:border-gray-400'
         }`}
       >
-        <Upload className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-        <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          Upload your lyrics
-        </h3>
-        <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Drag and drop your .txt files here, or click to browse
-        </p>
+        <div className="flex items-center gap-3">
+          <Upload className={`w-6 h-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+          <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Upload your lyrics
+          </span>
+        </div>
 
         <input
           type="file"
@@ -144,10 +143,6 @@ const UploadTab = ({
           <Plus className="w-4 h-4 mr-2" />
           Choose Files
         </label>
-
-        <p className={`text-xs mt-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-          Supports up to 50 .txt files
-        </p>
       </div>
 
       {/* Storage Type Tabs */}
@@ -177,7 +172,9 @@ const UploadTab = ({
                   ? 'bg-gray-700 text-white'
                   : 'bg-white text-gray-900 shadow-sm'
                 : !isAuthenticated
-                  ? 'text-gray-500 cursor-not-allowed opacity-50'
+                  ? darkMode
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-gray-500 cursor-not-allowed opacity-60'
                   : darkMode
                     ? 'text-gray-400 hover:text-gray-300'
                     : 'text-gray-600 hover:text-gray-900'
@@ -195,7 +192,7 @@ const UploadTab = ({
         }`}>
           {storageType === 'local' ? (
             <p>
-              <strong>Local Storage:</strong> Songs are saved in your browser. Data persists on this device only.
+              Songs are stored on this device only.
             </p>
           ) : (
             <p>
@@ -263,13 +260,13 @@ const UploadTab = ({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 md:gap-2">
+                  <div className="flex items-center gap-0.5 md:gap-1.5 flex-wrap">
                     {/* Audio button - directly opens file picker */}
                     {onAudioUpload && (
                       <button
                         onClick={() => handleMusicIconClick(song)}
                         disabled={isUploading}
-                        className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
+                        className={`text-xs px-1.5 py-1 rounded transition-colors ${
                           isUploading && uploadingSongId === song.id
                             ? darkMode
                               ? 'bg-yellow-700 text-yellow-200 cursor-wait'
@@ -293,7 +290,7 @@ const UploadTab = ({
                     )}
                     <button
                       onClick={() => onSongSelect(song)}
-                      className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
+                      className={`text-xs px-1.5 py-1 rounded transition-colors ${
                         darkMode ? 'bg-white hover:bg-gray-100 text-black' : 'bg-gray-200 hover:bg-gray-300 text-black'
                       }`}
                     >
@@ -301,7 +298,7 @@ const UploadTab = ({
                     </button>
                     <button
                       onClick={() => onEditSong(song)}
-                      className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
+                      className={`text-xs px-1.5 py-1 rounded transition-colors ${
                         darkMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-200' : 'bg-blue-200 hover:bg-blue-300 text-blue-700'
                       }`}
                     >
@@ -312,7 +309,7 @@ const UploadTab = ({
                       <button
                         onClick={() => onTransferSong(song)}
                         disabled={storageType === 'local' && !isAuthenticated}
-                        className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
+                        className={`text-xs px-1.5 py-1 rounded transition-colors ${
                           storageType === 'local' && !isAuthenticated
                             ? 'bg-gray-400 cursor-not-allowed opacity-50'
                             : darkMode
@@ -338,14 +335,14 @@ const UploadTab = ({
                     />
                     <button
                       onClick={() => onDeleteSong(song.id)}
-                      className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
+                      className={`text-xs px-1.5 py-1 rounded transition-colors ${
                         darkMode
                           ? 'bg-white hover:bg-gray-100 text-black'
                           : 'bg-gray-200 hover:bg-gray-300 text-red-600'
                       }`}
                       title="Delete song"
                     >
-                      <Trash2 className="w-3 h-3 md:w-4 md:h-4" style={{ width: '12px', height: '12px' }} />
+                      <Trash2 className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
                     </button>
                   </div>
                 </div>
@@ -355,12 +352,14 @@ const UploadTab = ({
                   <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                     {expandedAudioSongId === song.id ? (
                       <>
-                        <button
-                          onClick={() => setExpandedAudioSongId(null)}
-                          className={`mb-2 text-xs ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-900'}`}
-                        >
-                          ▼ Hide Audio Player
-                        </button>
+                        <div className="flex justify-center">
+                          <button
+                            onClick={() => setExpandedAudioSongId(null)}
+                            className={`mb-2 text-xs ${darkMode ? 'text-gray-900 hover:text-black' : 'text-gray-900 hover:text-black'}`}
+                          >
+                            ▼ Hide Audio Player
+                          </button>
+                        </div>
                         <AudioPlayer
                           audioUrl={song.audioFileUrl}
                           audioFilename={song.audioFileName}
@@ -384,12 +383,14 @@ const UploadTab = ({
                         />
                       </>
                     ) : (
-                      <button
-                        onClick={() => setExpandedAudioSongId(song.id)}
-                        className={`text-xs ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-900'}`}
-                      >
-                        ▶ Show Audio Player
-                      </button>
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => setExpandedAudioSongId(song.id)}
+                          className={`text-xs ${darkMode ? 'text-gray-900 hover:text-black' : 'text-gray-900 hover:text-black'}`}
+                        >
+                          ▶ Show Audio Player
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}

@@ -7,18 +7,19 @@ const MusicBanner = () => {
   if (!isVisible) return null;
 
   return (
-    <div className="bg-gray-700 text-white py-3 px-4 relative">
-      {/* Dismiss Button */}
+    <div className="bg-gray-700 text-white py-3 px-4 relative" style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 12px))' }}>
+      {/* Dismiss Button - centered vertically with content */}
       <button
         onClick={() => setIsVisible(false)}
-        className="absolute top-2 right-2 text-black hover:text-white transition-colors z-10 dismiss-button"
+        className="absolute right-2 text-black hover:text-white transition-colors z-10 dismiss-button"
+        style={{ top: '50%', transform: 'translateY(-50%)' }}
         title="Dismiss banner"
       >
         <X className="w-4 h-4" />
       </button>
 
       {/* Banner Content */}
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto pr-6">
         <div className="flex items-center justify-center gap-4 flex-wrap">
           
           {/* Left Social Links */}

@@ -13,7 +13,7 @@ import { analyzeRhymeStatistics } from './utils/phoneticUtils';
 import { songVocabularyPhoneticMap } from './data/songVocabularyPhoneticMap';
 import { saveUserSongs, clearUserSongs, saveExampleSongDeleted, loadAllSongs } from './utils/songStorage';
 import audioStorageService from './services/audioStorageService';
-import { deleteSong as deleteSongFromServer } from './services/songsService';
+import { deleteSong as deleteSongFromServer, updateSong as updateSongOnServer } from './services/songsService';
 import * as authService from './services/authService';
 // Import hooks
 import { useSearchHistory, useDarkMode, useHighlightWord } from './hooks/useLocalStorage';
@@ -186,6 +186,38 @@ const LyricsSearchAppContent = () => {
     }
   };
 
+  // Storage-aware save function (doesn't reload, just saves)
+  const saveSongsToStorage = async (songsToSave) => {
+    try {
+      if (storageType === 'database' && isAuthenticated) {
+        // For database mode, update each changed song individually
+        // This is more efficient than re-uploading everything
+        console.log('💾 Saving songs to database...');
+        for (const song of songsToSave) {
+          if (song.isExample) continue; // Skip example songs
+          try {
+            await updateSongOnServer(song.id, {
+              title: song.title,
+              content: song.lyrics || song.content,
+              filename: song.filename,
+              // Include drafts in the update
+              drafts: song.drafts || []
+            });
+          } catch (err) {
+            console.warn(`Failed to update song ${song.id} on server:`, err.message);
+          }
+        }
+        console.log('✅ Songs saved to database');
+      } else {
+        // Save to local storage
+        await saveUserSongs(songsToSave);
+        console.log('✅ Songs saved to localStorage');
+      }
+    } catch (error) {
+      console.error('❌ Failed to save songs:', error);
+    }
+  };
+
   // File upload hook - don't pass callback, we'll handle it differently
   const fileUploadHook = useFileUpload(songs, setSongs);  
   // Search hook
@@ -194,6 +226,8 @@ const LyricsSearchAppContent = () => {
   //Notepad hook
   const notepadState = useNotepad();
   const [originalSongContent, setOriginalSongContent] = useState('');
+  // Store content for "new" tabs (songId: null) so it persists when switching
+  const [newTabContent, setNewTabContent] = useState({ content: '', title: 'Untitled' });
 
   // Draft management hook
   const draftsHook = useDrafts();
@@ -207,6 +241,7 @@ const LyricsSearchAppContent = () => {
     closeTab,
     switchTab,
     getTabDisplayName,
+    updateTabSongId,
     MAX_DRAFTS_PER_SONG
   } = draftsHook;
 
@@ -248,6 +283,61 @@ const LyricsSearchAppContent = () => {
     loadSongs();
   }, [isAuthenticated, storageType]); // Reload whenever auth state or storage type changes
 
+  // Sync notepad content with database when songs are loaded
+  // This prevents stale content from overwriting newer database versions
+  useEffect(() => {
+    // Only check in database mode when we have songs and notepad is editing something
+    if (storageType !== 'database' || !isAuthenticated) return;
+    if (songs.length === 0) return;
+    if (!notepadState.currentEditingSongId) return;
+
+    const editingSong = songs.find(s => s.id === notepadState.currentEditingSongId);
+    if (!editingSong) {
+      // Song was deleted or doesn't exist - clear notepad editing state
+      console.log('⚠️ Notepad was editing a song that no longer exists, clearing...');
+      notepadState.setCurrentEditingSongId(null);
+      notepadState.updateContent('');
+      notepadState.updateTitle('Untitled');
+      return;
+    }
+
+    const dbContent = editingSong.lyrics || editingSong.content || '';
+    const notepadContent = notepadState.content || '';
+
+    // Compare content (normalize whitespace for comparison)
+    const normalizedDb = dbContent.trim();
+    const normalizedNotepad = notepadContent.trim();
+
+    if (normalizedDb !== normalizedNotepad && normalizedNotepad !== '') {
+      // Content differs - database has a different version
+      console.log('⚠️ Notepad content differs from database version');
+
+      // Show confirmation to user
+      const useDatabase = window.confirm(
+        `The song "${editingSong.title}" has been updated on another device or browser.\n\n` +
+        `Your local notepad has a different version.\n\n` +
+        `Click OK to load the latest version from the database.\n` +
+        `Click Cancel to keep your local version (you can save it to overwrite the database).`
+      );
+
+      if (useDatabase) {
+        // Update notepad with database content
+        notepadState.updateContent(dbContent);
+        notepadState.updateTitle(editingSong.title);
+        setOriginalSongContent(dbContent);
+        console.log('✅ Notepad synced with database version');
+      } else {
+        // User wants to keep local version - mark as having changes
+        console.log('📝 Keeping local notepad version (user can save to overwrite)');
+      }
+    } else if (normalizedNotepad === '' && normalizedDb !== '') {
+      // Notepad is empty but song has content - likely a fresh load, sync silently
+      notepadState.updateContent(dbContent);
+      notepadState.updateTitle(editingSong.title);
+      setOriginalSongContent(dbContent);
+    }
+  }, [songs, storageType, isAuthenticated]); // Only run when songs change, not on every notepad change
+
   // Reset stats filter when songs change
   useEffect(() => {
     if (songs.length === 0) {
@@ -272,8 +362,9 @@ const LyricsSearchAppContent = () => {
       return;
     }
 
-    // Skip auto-save if we're reloading or no songs
-    if (songs.length === 0 || isReloadingRef.current) {
+    // Skip auto-save if we're reloading, switching storage, or no songs
+    // This prevents database songs from being copied to localStorage when switching tabs
+    if (songs.length === 0 || isReloadingRef.current || isSwitchingStorageRef.current) {
       return;
     }
 
@@ -283,18 +374,26 @@ const LyricsSearchAppContent = () => {
       return;
     }
 
+    // Use longer debounce for database to reduce API calls
+    const debounceTime = (storageType === 'database' && isAuthenticated) ? 5000 : 2000;
+
     const timeoutId = setTimeout(async () => {
+      // Double-check we're not switching storage
+      if (isSwitchingStorageRef.current) {
+        console.log('⏭️ Skipping auto-save: storage switching in progress');
+        return;
+      }
       try {
-        console.log('💾 Auto-saving songs to localStorage...');
-        await saveUserSongs(songs);
+        console.log(`💾 Auto-saving songs to ${storageType}...`);
+        await saveSongsToStorage(songs);
         console.log('✅ Auto-save complete');
       } catch (error) {
         console.error('❌ Auto-save failed:', error);
       }
-    }, 2000); // 2 second debounce
+    }, debounceTime);
 
     return () => clearTimeout(timeoutId);
-  }, [songs, storageType]);
+  }, [songs, storageType, isAuthenticated]);
 
   // Debug token expiration issues
   useEffect(() => {
@@ -499,10 +598,11 @@ const LyricsSearchAppContent = () => {
 
       // Songs will automatically reload via useEffect dependency on storageType
     } finally {
-      // Add a delay before allowing another switch
+      // Add a longer delay before allowing another switch and auto-save
+      // This prevents database songs from being copied to localStorage
       setTimeout(() => {
         isSwitchingStorageRef.current = false;
-      }, 1000);
+      }, 3000);
     }
   };
 
@@ -799,17 +899,25 @@ const LyricsSearchAppContent = () => {
       filename: `${sanitizedTitle}.txt`,
       fromNotepad: true
     };
-    
+
     setSongs(prev => [newSong, ...prev]);
-    
+
     // Save and reload to get UUID from server
     if (isAuthenticated) {
       await saveAndReloadSongs();
     }
-    
-    // Optionally clear notepad after upload
-    notepadState.updateContent('');
-    notepadState.updateTitle('Untitled');
+
+    // Update the current tab to point to the new song (instead of clearing)
+    if (openTabs.length > 0) {
+      updateTabSongId(activeTabIndex, newSong.id);
+    }
+
+    // Clear new tab content state since it's now a saved song
+    setNewTabContent({ content: '', title: 'Untitled' });
+
+    // Update notepad to show we're now editing this song
+    notepadState.setCurrentEditingSongId(newSong.id);
+    setOriginalSongContent(sanitizedContent);
   };
 
   const handleSaveChanges = async () => {
@@ -865,16 +973,48 @@ const LyricsSearchAppContent = () => {
     }
   };
 
-  const handleStartNewContent = () => {
-    if (hasUnsavedChanges) {
-      const confirmNew = window.confirm('You have unsaved changes. Reset Notepad?');
-      if (!confirmNew) return;
+  const handleStartNewContent = async () => {
+    // Save current tab before creating new one
+    if (openTabs.length > 0) {
+      const currentTab = getActiveTab();
+      if (currentTab?.songId === null) {
+        // Save new tab content to state before creating another new tab
+        setNewTabContent({
+          content: notepadState.content,
+          title: notepadState.title
+        });
+      } else if (notepadState.currentEditingSongId) {
+        await handleSaveCurrentTab();
+      }
     }
-    
-    notepadState.updateContent('');
-    notepadState.updateTitle('Untitled');
-    notepadState.setCurrentEditingSongId(null);
-    setOriginalSongContent('');
+
+    // Check if a "new" tab already exists
+    const existingNewTab = openTabs.findIndex(tab => tab.songId === null);
+    if (existingNewTab !== -1) {
+      // Switch to existing new tab instead of creating another
+      switchTab(existingNewTab);
+      notepadState.updateContent(newTabContent.content);
+      notepadState.updateTitle(newTabContent.title);
+      notepadState.setCurrentEditingSongId(null);
+      setOriginalSongContent('');
+    } else {
+      // Create a new tab with songId: null (represents unsaved new content)
+      openTab(null, null);
+
+      // Reset new tab content state for fresh content
+      setNewTabContent({ content: '', title: 'Untitled' });
+
+      // Clear notepad for new content
+      notepadState.updateContent('');
+      notepadState.updateTitle('Untitled');
+      notepadState.setCurrentEditingSongId(null);
+      setOriginalSongContent('');
+    }
+
+    // Expand notepad if minimized
+    if (notepadState.isMinimized) {
+      notepadState.toggleMinimized();
+    }
   };
 
   const handleExportSongTxt = (song) => {
@@ -949,8 +1089,12 @@ const LyricsSearchAppContent = () => {
     if (!activeTab) return false;
 
     const { songId, draftId } = activeTab;
+
+    // Don't try to save "new content" tabs (songId is null)
+    if (songId === null) return false;
+
     const song = songs.find(s => s.id === songId);
-    if (!song || !song.id) return false; // Don't save new unsaved songs
+    if (!song || !song.id) return false; // Don't save if song not found
 
     const currentContent = notepadState.content;
     const currentTitle = notepadState.title;
@@ -971,7 +1115,7 @@ const LyricsSearchAppContent = () => {
         return s;
       });
       setSongs(updatedSongs);
-      await saveUserSongs(updatedSongs);
+      await saveSongsToStorage(updatedSongs);
     } else {
       // Saving main song
       const updatedSongs = songs.map(s =>
@@ -980,12 +1124,12 @@ const LyricsSearchAppContent = () => {
           : s
       );
       setSongs(updatedSongs);
-      await saveUserSongs(updatedSongs);
+      await saveSongsToStorage(updatedSongs);
       setOriginalSongContent(currentContent);
     }
 
     return true;
-  }, [getActiveTab, songs, notepadState.content, notepadState.title, setSongs]);
+  }, [getActiveTab, songs, notepadState.content, notepadState.title, setSongs, saveSongsToStorage]);
 
   // Create a new draft
   const handleCreateDraft = useCallback((song) => {
@@ -1003,11 +1147,11 @@ const LyricsSearchAppContent = () => {
         : s
     );
     setSongs(updatedSongs);
-    saveUserSongs(updatedSongs);
+    saveSongsToStorage(updatedSongs);
 
     // Open the new draft
     handleOpenDraft(updatedSongs.find(s => s.id === song.id), draft);
-  }, [createDraft, songs, setSongs]);
+  }, [createDraft, songs, setSongs, saveSongsToStorage]);
 
   // Delete a draft
   const handleDeleteDraft = useCallback(async (songId, draftId) => {
@@ -1022,8 +1166,8 @@ const LyricsSearchAppContent = () => {
         : s
     );
     setSongs(updatedSongs);
-    await saveUserSongs(updatedSongs);
-  }, [deleteDraft, songs, setSongs]);
+    await saveSongsToStorage(updatedSongs);
+  }, [deleteDraft, songs, setSongs, saveSongsToStorage]);
 
   // Open a draft in the notepad
   const handleOpenDraft = useCallback(async (song, draft) => {
@@ -1049,8 +1193,22 @@ const LyricsSearchAppContent = () => {
 
   // Handle tab switching
   const handleSwitchTab = useCallback(async (tabIndex) => {
-    // Save current tab before switching
-    await handleSaveCurrentTab();
+    // Get current tab before switching
+    const currentTab = getActiveTab();
+
+    // Save current content before switching
+    if (currentTab) {
+      if (currentTab.songId === null) {
+        // Save new tab content to state
+        setNewTabContent({
+          content: notepadState.content,
+          title: notepadState.title
+        });
+      } else if (notepadState.currentEditingSongId) {
+        // Save existing song
+        await handleSaveCurrentTab();
+      }
+    }
 
     // Switch to new tab
     switchTab(tabIndex);
@@ -1060,12 +1218,22 @@ const LyricsSearchAppContent = () => {
     if (!newActiveTab) return;
 
     const { songId, draftId } = newActiveTab;
+
+    // Handle "new content" tabs (songId is null)
+    if (songId === null) {
+      notepadState.updateContent(newTabContent.content);
+      notepadState.updateTitle(newTabContent.title);
+      notepadState.setCurrentEditingSongId(null);
+      setOriginalSongContent('');
+      return;
+    }
+
     const song = songs.find(s => s.id === songId);
     if (!song) return;
 
     if (draftId) {
       // Loading a draft
-      const draft = song.drafts.find(d => d.id === draftId);
+      const draft = song.drafts?.find(d => d.id === draftId);
       if (draft) {
         notepadState.updateContent(draft.content);
         notepadState.updateTitle(`${song.title} - ${draft.name}`);
@@ -1079,12 +1247,14 @@ const LyricsSearchAppContent = () => {
     }
 
     notepadState.setCurrentEditingSongId(songId);
-  }, [handleSaveCurrentTab, switchTab, openTabs, songs, notepadState]);
+  }, [handleSaveCurrentTab, switchTab, openTabs, songs, notepadState, getActiveTab, newTabContent]);
 
   // Handle tab closing
   const handleCloseTab = useCallback(async (tabIndex) => {
-    // Save before closing
-    await handleSaveCurrentTab();
+    // Save before closing (only if editing an existing song)
+    if (notepadState.currentEditingSongId) {
+      await handleSaveCurrentTab();
+    }
 
     // Close the tab
     closeTab(tabIndex);
@@ -1176,12 +1346,12 @@ const LyricsSearchAppContent = () => {
       
       setSongs(updatedSongs);
       console.log('✅ Local state updated');
-      
-      // Save to localStorage (works for all users)
-      console.log('🔄 Saving songs to localStorage...');
+
+      // Save to appropriate storage (localStorage or database)
+      console.log(`🔄 Saving songs to ${storageType}...`);
       try {
-        await saveUserSongs(updatedSongs);
-        console.log('✅ Successfully saved to localStorage');
+        await saveSongsToStorage(updatedSongs);
+        console.log('✅ Successfully saved to storage');
       } catch (saveError) {
         console.error('❌ Save failed:', saveError);
 
@@ -1292,14 +1462,12 @@ const LyricsSearchAppContent = () => {
       
       setSongs(updatedSongs);
       console.log('✅ Song metadata updated');
-      
-      // Save to localStorage/backend if authenticated
-      if (isAuthenticated) {
-        console.log('🔄 Saving to backend...');
-        await saveUserSongs(updatedSongs);
-        console.log('✅ Backend updated');
-      }
-      
+
+      // Save to appropriate storage
+      console.log(`🔄 Saving to ${storageType}...`);
+      await saveSongsToStorage(updatedSongs);
+      console.log('✅ Storage updated');
+
       console.log('🎉 === AUDIO REMOVE COMPLETE ===');
     } catch (error) {
       console.error('❌ Error removing audio:', error);

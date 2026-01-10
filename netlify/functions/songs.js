@@ -187,6 +187,62 @@ exports.handler = async (event, context) => {
         const userId = user.userId;
 
         switch (event.httpMethod) {
+            case 'POST':
+                // Create a new song
+                try {
+                    const songData = JSON.parse(event.body);
+
+                    if (!songData.content && !songData.lyrics) {
+                        return {
+                            statusCode: 400,
+                            headers,
+                            body: JSON.stringify({ error: 'Song content is required' })
+                        };
+                    }
+
+                    const newSong = await SongOperations.create(userId, {
+                        title: songData.title,
+                        content: songData.content || songData.lyrics,
+                        filename: songData.filename,
+                        dateAdded: songData.dateAdded,
+                        audioFileUrl: songData.audioFileUrl,
+                        audioFileName: songData.audioFileName,
+                        audioFileSize: songData.audioFileSize,
+                        audioDuration: songData.audioDuration
+                    });
+
+                    // Transform to API format
+                    const songResponse = {
+                        id: newSong.id,
+                        title: newSong.title,
+                        content: newSong.content,
+                        lyrics: newSong.content,
+                        wordCount: newSong.word_count,
+                        lineCount: newSong.line_count,
+                        dateAdded: newSong.date_added,
+                        dateModified: newSong.date_modified,
+                        userId: newSong.user_id,
+                        filename: newSong.filename,
+                        audioFileUrl: newSong.audio_file_url,
+                        audioFileName: newSong.audio_file_name,
+                        audioFileSize: newSong.audio_file_size,
+                        audioDuration: newSong.audio_duration
+                    };
+
+                    return {
+                        statusCode: 201,
+                        headers,
+                        body: JSON.stringify({ song: songResponse, message: 'Song created successfully' })
+                    };
+                } catch (error) {
+                    console.error('Error creating song:', error);
+                    return {
+                        statusCode: 500,
+                        headers,
+                        body: JSON.stringify({ error: 'Failed to create song: ' + error.message })
+                    };
+                }
+
             case 'GET':
                 // List user's songs (metadata only)
                 try {

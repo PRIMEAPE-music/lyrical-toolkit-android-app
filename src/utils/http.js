@@ -32,8 +32,14 @@ export const httpRequest = async (url, options = {}) => {
 
     // Add data if present
     if (body) {
-      if (typeof body === 'string') {
-        request.data = body;
+      // CapacitorHttp expects data as an object for JSON content-type
+      // If body is already stringified JSON, parse it back
+      if (typeof body === 'string' && headers['Content-Type']?.includes('application/json')) {
+        try {
+          request.data = JSON.parse(body);
+        } catch (e) {
+          request.data = body;
+        }
       } else {
         request.data = body;
       }

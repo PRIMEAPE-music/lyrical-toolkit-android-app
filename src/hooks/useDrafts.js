@@ -160,6 +160,11 @@ export const useDrafts = () => {
    * @returns {string} - Display name for the tab
    */
   const getTabDisplayName = useCallback((tab, songs) => {
+    // Handle "new content" tabs (songId is null)
+    if (tab.songId === null) {
+      return 'New';
+    }
+
     const song = songs.find(s => s.id === tab.songId);
     if (!song) return 'Unknown';
 
@@ -169,6 +174,21 @@ export const useDrafts = () => {
     }
 
     return song.title;
+  }, []);
+
+  /**
+   * Update a tab's songId (used when new content becomes a saved song)
+   * @param {number} tabIndex - Index of tab to update
+   * @param {string} newSongId - The new song ID
+   */
+  const updateTabSongId = useCallback((tabIndex, newSongId) => {
+    setOpenTabs(prev => {
+      const newTabs = [...prev];
+      if (tabIndex >= 0 && tabIndex < newTabs.length) {
+        newTabs[tabIndex] = { ...newTabs[tabIndex], songId: newSongId };
+      }
+      return newTabs;
+    });
   }, []);
 
   return {
@@ -182,6 +202,7 @@ export const useDrafts = () => {
     switchTab,
     closeAllTabs,
     getTabDisplayName,
+    updateTabSongId,
     MAX_DRAFTS_PER_SONG
   };
 };

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Edit3, Minimize2, Maximize2, Download, Upload, RotateCcw, Plus, Expand, Shrink, ChevronsUpDown } from 'lucide-react';
+import { Edit3, Minimize2, Maximize2, Download, Upload, Save, RotateCcw, Plus, Expand, Shrink, ChevronsUpDown } from 'lucide-react';
 import AudioPlayer from '../Audio/AudioPlayer';
 import NotepadTabBar from './NotepadTabBar';
 
@@ -628,22 +628,23 @@ const FloatingNotepad = ({
           )}
         </div>
 
-        {/* Right side - Export buttons (when expanded) + Minimize/Maximize button */}
+        {/* Right side - Export buttons + Minimize/Maximize button */}
         <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0 notepad-header-buttons pr-1">
-          {!isMinimized && (
+          {/* Buttons for MINIMIZED state */}
+          {isMinimized && (
             <>
-              {/* 1. Upload/Save Song Button - Context Aware */}
+              {/* Upload/Save Button */}
               <button
                 onClick={notepadState.currentEditingSongId ? onSaveChanges : onUploadToSongs}
                 disabled={!content.trim()}
                 className={`p-1 rounded text-xs transition-colors ${
                   content.trim()
                     ? notepadState.currentEditingSongId
-                      ? darkMode 
-                        ? 'bg-blue-800 hover:bg-blue-700 text-blue-200' 
+                      ? darkMode
+                        ? 'bg-blue-800 hover:bg-blue-700 text-blue-200'
                         : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : darkMode 
-                        ? 'bg-green-800 hover:bg-green-700 text-green-200' 
+                      : darkMode
+                        ? 'bg-green-800 hover:bg-green-700 text-green-200'
                         : 'bg-green-600 hover:bg-green-700 text-white'
                     : darkMode
                       ? 'bg-gray-600 text-gray-500 cursor-not-allowed'
@@ -651,62 +652,72 @@ const FloatingNotepad = ({
                 }`}
                 title={notepadState.currentEditingSongId ? "Save Changes" : "Add to Songs"}
               >
-                <Upload className="w-3 h-3" style={darkMode ? {} : { color: '#000000' }} />
+                {notepadState.currentEditingSongId ? (
+                  <Save className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+                ) : (
+                  <Upload className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+                )}
               </button>
 
-              {/* 2. Export Song Button - Hide on mobile when editing */}
+              {/* New Tab Button */}
               <button
-                onClick={onExportTxt}
+                onClick={onStartNewContent}
+                className={`p-1 rounded text-xs transition-colors ${
+                  darkMode
+                    ? 'bg-purple-800 hover:bg-purple-700 text-purple-200'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+                title="New Empty Tab"
+              >
+                <Plus className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+              </button>
+            </>
+          )}
+
+          {/* Buttons for EXPANDED state - same as minimized */}
+          {!isMinimized && (
+            <>
+              {/* Upload/Save Button */}
+              <button
+                onClick={notepadState.currentEditingSongId ? onSaveChanges : onUploadToSongs}
                 disabled={!content.trim()}
                 className={`p-1 rounded text-xs transition-colors ${
-                  notepadState.currentEditingSongId ? 'hidden md:block' : ''
-                } ${
                   content.trim()
-                    ? darkMode 
-                      ? 'bg-blue-800 hover:bg-blue-700 text-blue-200' 
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    ? notepadState.currentEditingSongId
+                      ? darkMode
+                        ? 'bg-blue-800 hover:bg-blue-700 text-blue-200'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : darkMode
+                        ? 'bg-green-800 hover:bg-green-700 text-green-200'
+                        : 'bg-green-600 hover:bg-green-700 text-white'
                     : darkMode
                       ? 'bg-gray-600 text-gray-500 cursor-not-allowed'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
-                title="Export as TXT"
+                title={notepadState.currentEditingSongId ? "Save Changes" : "Add to Songs"}
               >
-                <Download className="w-3 h-3" style={darkMode ? {} : { color: '#000000' }} />
+                {notepadState.currentEditingSongId ? (
+                  <Save className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+                ) : (
+                  <Upload className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+                )}
               </button>
 
-              {/* 3. Empty Notepad Button - Only show when editing, hidden on mobile */}
-              {notepadState.currentEditingSongId && (
-                <button
-                  onClick={onStartNewContent}
-                  className={`p-1 rounded text-xs transition-colors hidden md:block ${
-                    darkMode
-                      ? 'bg-purple-800 hover:bg-purple-700 text-purple-200'
-                      : 'bg-purple-600 hover:bg-purple-700 text-white'
-                  }`}
-                  title="Empty Notepad"
-                >
-                  <Plus className="w-3 h-3" style={darkMode ? {} : { color: '#000000' }} />
-                </button>
-              )}
-
-              {/* 4. Revert Changes Button - Only show when editing and has changes, hidden on mobile */}
-              {notepadState.currentEditingSongId && hasUnsavedChanges && (
-                <button
-                  onClick={onRevertChanges}
-                  className={`p-1 rounded text-xs transition-colors hidden md:block ${
-                    darkMode
-                      ? 'bg-orange-800 hover:bg-orange-700 text-orange-200'
-                      : 'bg-orange-600 hover:bg-orange-700 text-white'
-                  }`}
-                  title="Revert to Original"
-                >
-                  <RotateCcw className="w-3 h-3" style={darkMode ? {} : { color: '#000000' }} />
-                </button>
-              )}
+              {/* New Tab Button */}
+              <button
+                onClick={onStartNewContent}
+                className={`p-1 rounded text-xs transition-colors ${
+                  darkMode
+                    ? 'bg-purple-800 hover:bg-purple-700 text-purple-200'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+                title="New Empty Tab"
+              >
+                <Plus className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+              </button>
             </>
           )}
-          
-          
+
           <button
             onClick={toggleMinimized}
             className={`p-1 rounded hover:bg-opacity-20 hover:bg-gray-500 ${
@@ -805,7 +816,7 @@ const FloatingNotepad = ({
           <div className={`absolute bottom-2 text-xs pointer-events-none mobile-char-count ${
             darkMode ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            {content.length} chars
+            {content.trim() ? content.trim().split(/\s+/).length : 0} words • {content.length} chars
           </div>
         </div>
       )}
@@ -981,19 +992,17 @@ const FloatingNotepad = ({
           flexDirection: 'column'
         }}
       >
-        {/* Header - Smaller for fullscreen */}
-        <div 
+        {/* Header - Matches minimized/expanded notepad header exactly */}
+        <div
+          className={`flex items-center justify-between p-2 border-b ${
+            darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'
+          }`}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '8px 12px',
-            borderBottom: darkMode ? '1px solid #4b5563' : '1px solid #e5e7eb',
-            backgroundColor: darkMode ? '#374151' : '#f9fafb',
-            minHeight: '40px',
-            flexShrink: 0
+            paddingTop: 'max(32px, calc(8px + env(safe-area-inset-top, 24px)))',
+            paddingRight: 'max(8px, env(safe-area-inset-right, 8px))'
           }}
         >
+          {/* Left side - Icon + Title */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Edit3 className={`w-4 h-4 flex-shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <input
@@ -1001,109 +1010,79 @@ const FloatingNotepad = ({
               value={title + (hasUnsavedChanges ? '*' : '')}
               onChange={(e) => updateTitle(e.target.value.replace('*', ''))}
               placeholder="Title..."
-              className={`flex-1 px-2 py-1 text-sm border rounded ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+              className={`flex-1 px-1 md:px-2 py-0.5 md:py-1 text-xs md:text-sm border rounded min-w-0 max-w-[100px] md:max-w-none ${
+                darkMode
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
               }`}
             />
           </div>
 
-          {/* Header buttons - simplified for fullscreen */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            flexShrink: 0
-          }}>
+          {/* Right side - Buttons matching minimized/expanded notepad */}
+          <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0 notepad-header-buttons pr-1">
+            {/* Upload/Save Button */}
             <button
               onClick={notepadState.currentEditingSongId ? onSaveChanges : onUploadToSongs}
               disabled={!content.trim()}
-              style={{
-                padding: '4px',
-                borderRadius: '4px',
-                border: '1px solid #d1d5db',
-                cursor: content.trim() ? 'pointer' : 'not-allowed',
-                backgroundColor: content.trim() ? '#ffffff' : '#f3f4f6',
-                color: content.trim() ? '#000000' : '#9ca3af',
-                width: '24px',
-                height: '24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
+              className={`p-1 rounded text-xs transition-colors ${
+                content.trim()
+                  ? notepadState.currentEditingSongId
+                    ? darkMode
+                      ? 'bg-blue-800 hover:bg-blue-700 text-blue-200'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : darkMode
+                      ? 'bg-green-800 hover:bg-green-700 text-green-200'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  : darkMode
+                    ? 'bg-gray-600 text-gray-500 cursor-not-allowed'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
               title={notepadState.currentEditingSongId ? "Save Changes" : "Add to Songs"}
             >
-              <Upload className="w-3 h-3" />
+              {notepadState.currentEditingSongId ? (
+                <Save className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+              ) : (
+                <Upload className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+              )}
             </button>
 
-            {notepadState.currentEditingSongId && (
-              <>
-                <button
-                  onClick={onStartNewContent}
-                  style={{
-                    padding: '4px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    cursor: 'pointer',
-                    backgroundColor: '#ffffff',
-                    color: '#000000',
-                    width: '24px',
-                    height: '24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  title="Empty Notepad"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-                
-                <button
-                  onClick={onRevertChanges}
-                  disabled={!hasUnsavedChanges}
-                  style={{
-                    padding: '4px',
-                    borderRadius: '4px',
-                    border: '1px solid #d1d5db',
-                    cursor: hasUnsavedChanges ? 'pointer' : 'not-allowed',
-                    backgroundColor: hasUnsavedChanges ? '#ffffff' : '#f3f4f6',
-                    color: hasUnsavedChanges ? '#000000' : '#9ca3af',
-                    width: '24px',
-                    height: '24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  title="Revert to Original"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              </>
-            )}
-            
+            {/* New Tab Button */}
+            <button
+              onClick={onStartNewContent}
+              className={`p-1 rounded text-xs transition-colors ${
+                darkMode
+                  ? 'bg-purple-800 hover:bg-purple-700 text-purple-200'
+                  : 'bg-purple-600 hover:bg-purple-700 text-white'
+              }`}
+              title="New Empty Tab"
+            >
+              <Plus className="w-4 h-4" style={darkMode ? {} : { color: '#000000' }} />
+            </button>
+
             {/* Exit fullscreen button */}
             <button
               onClick={toggleFullscreen}
-              style={{
-                padding: '4px',
-                borderRadius: '4px',
-                backgroundColor: '#ffffff',
-                color: '#000000',
-                border: '1px solid #d1d5db',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '24px',
-                height: '24px'
-              }}
+              className={`p-1 rounded hover:bg-opacity-20 hover:bg-gray-500 ${
+                darkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
               title="Exit Fullscreen"
             >
-              <Shrink className="w-3 h-3" />
+              <Shrink className="w-4 h-4" />
             </button>
           </div>
         </div>
+
+        {/* Tab Bar - Show when tabs exist */}
+        {openTabs.length > 0 && (
+          <NotepadTabBar
+            tabs={openTabs}
+            activeTabIndex={activeTabIndex}
+            onSwitchTab={onSwitchTab}
+            onCloseTab={onCloseTab}
+            getTabDisplayName={getTabDisplayName}
+            darkMode={darkMode}
+          />
+        )}
 
         {/* Audio Player Bar - Same as regular notepad if audio exists */}
         {currentSongAudio && (
@@ -1163,7 +1142,7 @@ const FloatingNotepad = ({
             color: darkMode ? '#9ca3af' : '#6b7280',
             pointerEvents: 'none'
           }}>
-            {content.length} chars
+            {content.trim() ? content.trim().split(/\s+/).length : 0} words • {content.length} chars
           </div>
         </div>
       </div>
