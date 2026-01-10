@@ -27,7 +27,7 @@ const Header = ({
   if (isMobile) {
     // Mobile layout - No tabs, just header bar (tabs moved to bottom nav)
     return (
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b sticky top-0 z-50 transition-colors duration-300`}>
+      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b sticky top-0 z-50 transition-colors duration-300`} style={{ paddingTop: 'env(safe-area-inset-top, 24px)' }}>
         <div className="max-w-6xl mx-auto px-4 py-4">
           {/* Mobile header */}
           <div className="flex items-center justify-between">
