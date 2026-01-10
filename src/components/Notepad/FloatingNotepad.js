@@ -625,7 +625,7 @@ const FloatingNotepad = ({
         onClick={(e) => e.stopPropagation()}
         className={`fixed flex items-center justify-center cursor-ns-resize z-[999999]`}
         style={{
-          bottom: `${tempPosition.bottom + (isKeyboardOpen ? 8 : 64) + tempDimensions.height}px`,
+          bottom: `${tempPosition.bottom + (isKeyboardOpen ? 0 : 64) + tempDimensions.height}px`,
           // Center the handle: notepad right edge + half notepad width - half handle width
           right: `${tempPosition.right + (tempDimensions.width / 2) - (tempDimensions.width * 0.25 / 2)}px`,
           width: `${tempDimensions.width * 0.25}px`,
@@ -687,7 +687,7 @@ const FloatingNotepad = ({
           : {
               // Expanded: Floating window
               // When keyboard is open, reduce offset since BottomNav is hidden by keyboard
-              bottom: isMobile ? `${tempPosition.bottom + (isKeyboardOpen ? 8 : 64)}px` : `${tempPosition.bottom}px`,
+              bottom: isMobile ? `${tempPosition.bottom + (isKeyboardOpen ? 0 : 64)}px` : `${tempPosition.bottom}px`,
               right: isMobile ? `calc(${Math.max(tempPosition.right, 8)}px + env(safe-area-inset-right, 0px))` : `${tempPosition.right}px`,
               width: isMobile ? `calc(${tempDimensions.width}px - env(safe-area-inset-right, 0px))` : `${tempDimensions.width}px`,
               height: `${tempDimensions.height}px`,

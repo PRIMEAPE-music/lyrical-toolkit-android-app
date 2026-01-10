@@ -55,14 +55,15 @@ const ExportDropdown = ({ song, onExportTxt, onExportPdf, darkMode }) => {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
-        className={`text-xs md:text-sm px-2 md:px-3 py-1 rounded transition-colors ${
-          darkMode 
-            ? 'bg-white hover:bg-gray-100 text-black' 
+        className={`text-xs md:text-sm px-1 py-0.5 rounded transition-colors ${
+          darkMode
+            ? 'bg-white hover:bg-gray-100 text-black'
             : 'bg-gray-200 hover:bg-gray-300 text-black'
         }`}
       >
-        <Download className={`w-3 h-3 md:w-4 md:h-4 ${darkMode ? 'text-black' : 'text-black'}`} style={{ width: '12px', height: '12px' }} />
+        <Download className={`w-3 h-3 md:w-4 md:h-4 ${darkMode ? 'text-black' : 'text-black'}`} style={{ width: '10px', height: '10px' }} />
       </button>
 
       {isOpen && (

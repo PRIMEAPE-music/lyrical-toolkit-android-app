@@ -282,10 +282,54 @@ exports.handler = async (event, context) => {
                 }
 
             case 'PUT':
-                // Save/update user's songs (bulk operation)
+                // Check if this is a single song update (PUT /songs/{id})
                 try {
+                    const pathParts = event.path.split('/').filter(Boolean);
+                    const songIdFromPath = pathParts[pathParts.length - 1];
+
+                    // If the last part is a UUID, update that specific song
+                    if (songIdFromPath && isUUID(songIdFromPath)) {
+                        console.log(`Updating single song with ID: ${songIdFromPath}`);
+                        const songData = JSON.parse(event.body);
+
+                        const updatedSong = await SongOperations.update(userId, songIdFromPath, {
+                            title: songData.title,
+                            content: songData.content || songData.lyrics,
+                            filename: songData.filename,
+                            audioFileUrl: songData.audioFileUrl,
+                            audioFileName: songData.audioFileName,
+                            audioFileSize: songData.audioFileSize,
+                            audioDuration: songData.audioDuration
+                        });
+
+                        // Transform to API format
+                        const songResponse = {
+                            id: updatedSong.id,
+                            title: updatedSong.title,
+                            content: updatedSong.content,
+                            lyrics: updatedSong.content,
+                            wordCount: updatedSong.word_count,
+                            lineCount: updatedSong.line_count,
+                            dateAdded: updatedSong.date_added,
+                            dateModified: updatedSong.date_modified,
+                            userId: updatedSong.user_id,
+                            filename: updatedSong.filename,
+                            audioFileUrl: updatedSong.audio_file_url,
+                            audioFileName: updatedSong.audio_file_name,
+                            audioFileSize: updatedSong.audio_file_size,
+                            audioDuration: updatedSong.audio_duration
+                        };
+
+                        return {
+                            statusCode: 200,
+                            headers,
+                            body: JSON.stringify({ song: songResponse, message: 'Song updated successfully' })
+                        };
+                    }
+
+                    // Otherwise, handle bulk update (PUT /songs with { songs: [...] })
                     const { songs } = JSON.parse(event.body);
-                    
+
                     if (!Array.isArray(songs)) {
                         return {
                             statusCode: 400,

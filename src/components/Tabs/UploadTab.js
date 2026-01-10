@@ -266,7 +266,7 @@ const UploadTab = ({
                       <button
                         onClick={() => handleMusicIconClick(song)}
                         disabled={isUploading}
-                        className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                        className={`text-xs px-1 py-0.5 rounded transition-colors ${
                           isUploading && uploadingSongId === song.id
                             ? darkMode
                               ? 'bg-yellow-700 text-yellow-200 cursor-wait'
@@ -282,36 +282,36 @@ const UploadTab = ({
                         title={isUploading && uploadingSongId === song.id ? "Uploading..." : song.audioFileUrl ? "Replace audio" : "Add audio"}
                       >
                         {isUploading && uploadingSongId === song.id ? (
-                          <Loader2 className="w-3 h-3 md:w-4 md:h-4 animate-spin" style={{ width: '12px', height: '12px' }} />
+                          <Loader2 className="w-3 h-3 md:w-4 md:h-4 animate-spin" style={{ width: '10px', height: '10px' }} />
                         ) : (
-                          <Music className="w-3 h-3 md:w-4 md:h-4" style={{ width: '12px', height: '12px' }} />
+                          <Music className="w-3 h-3 md:w-4 md:h-4" style={{ width: '10px', height: '10px' }} />
                         )}
                       </button>
                     )}
                     <button
                       onClick={() => onSongSelect(song)}
-                      className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                      className={`text-xs px-1 py-0.5 rounded transition-colors ${
                         darkMode ? 'bg-white hover:bg-gray-100 text-black' : 'bg-gray-200 hover:bg-gray-300 text-black'
                       }`}
                       title="View lyrics"
                     >
-                      <Eye className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                      <Eye className="w-3 h-3" style={{ width: '10px', height: '10px' }} />
                     </button>
                     <button
                       onClick={() => onEditSong(song)}
-                      className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                      className={`text-xs px-1 py-0.5 rounded transition-colors ${
                         darkMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-200' : 'bg-blue-200 hover:bg-blue-300 text-blue-700'
                       }`}
                       title="Edit song"
                     >
-                      <Pencil className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                      <Pencil className="w-3 h-3" style={{ width: '10px', height: '10px' }} />
                     </button>
                     {/* Transfer button - only show for non-example songs */}
                     {!song.isExample && onTransferSong && (
                       <button
                         onClick={() => onTransferSong(song)}
                         disabled={storageType === 'local' && !isAuthenticated}
-                        className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                        className={`text-xs px-1 py-0.5 rounded transition-colors ${
                           storageType === 'local' && !isAuthenticated
                             ? 'bg-gray-400 cursor-not-allowed opacity-50'
                             : darkMode
@@ -326,7 +326,7 @@ const UploadTab = ({
                               : 'Transfer to Local Storage'
                         }
                       >
-                        <ArrowRightLeft className="w-3 h-3 md:w-4 md:h-4" style={{ width: '12px', height: '12px' }} />
+                        <ArrowRightLeft className="w-3 h-3 md:w-4 md:h-4" style={{ width: '10px', height: '10px' }} />
                       </button>
                     )}
                     <ExportDropdown
@@ -337,14 +337,14 @@ const UploadTab = ({
                     />
                     <button
                       onClick={() => onDeleteSong(song.id)}
-                      className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                      className={`text-xs px-1 py-0.5 rounded transition-colors ${
                         darkMode
                           ? 'bg-white hover:bg-gray-100 text-black'
                           : 'bg-gray-200 hover:bg-gray-300 text-red-600'
                       }`}
                       title="Delete song"
                     >
-                      <Trash2 className="w-3 h-3" style={{ width: '12px', height: '12px' }} />
+                      <Trash2 className="w-3 h-3" style={{ width: '10px', height: '10px' }} />
                     </button>
                   </div>
                 </div>
