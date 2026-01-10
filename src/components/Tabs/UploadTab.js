@@ -36,6 +36,8 @@ const UploadTab = ({
   const [uploadingSongId, setUploadingSongId] = useState(null);
   // Track upload progress
   const [isUploading, setIsUploading] = useState(false);
+  // Track which song's audio player is expanded (to prevent memory issues)
+  const [expandedAudioSongId, setExpandedAudioSongId] = useState(null);
 
   // Handle clicking the music icon - directly open file picker
   const handleMusicIconClick = (song) => {
@@ -348,30 +350,47 @@ const UploadTab = ({
                   </div>
                 </div>
 
-                {/* Audio Player - Show if song has audio */}
+                {/* Audio Player - Show if song has audio and is expanded */}
                 {song.audioFileUrl && (
                   <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                    <AudioPlayer
-                      audioUrl={song.audioFileUrl}
-                      audioFilename={song.audioFileName}
-                      audioSize={song.audioFileSize}
-                      audioDuration={song.audioDuration}
-                      darkMode={darkMode}
-                      onDownload={() => {
-                        console.log('🎵 UploadTab onDownload wrapper called');
-                        return onAudioDownload && onAudioDownload(song);
-                      }}
-                      onRemove={() => {
-                        console.log('🎵 UploadTab onRemove wrapper called');
-                        return onAudioRemove && onAudioRemove(song.id);
-                      }}
-                      onReplace={() => {
-                        console.log('🎵 UploadTab onReplace wrapper called');
-                        handleMusicIconClick(song);
-                      }}
-                      showControls={true}
-                      compact={false}
-                    />
+                    {expandedAudioSongId === song.id ? (
+                      <>
+                        <button
+                          onClick={() => setExpandedAudioSongId(null)}
+                          className={`mb-2 text-xs ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-900'}`}
+                        >
+                          ▼ Hide Audio Player
+                        </button>
+                        <AudioPlayer
+                          audioUrl={song.audioFileUrl}
+                          audioFilename={song.audioFileName}
+                          audioSize={song.audioFileSize}
+                          audioDuration={song.audioDuration}
+                          darkMode={darkMode}
+                          onDownload={() => {
+                            console.log('🎵 UploadTab onDownload wrapper called');
+                            return onAudioDownload && onAudioDownload(song);
+                          }}
+                          onRemove={() => {
+                            console.log('🎵 UploadTab onRemove wrapper called');
+                            return onAudioRemove && onAudioRemove(song.id);
+                          }}
+                          onReplace={() => {
+                            console.log('🎵 UploadTab onReplace wrapper called');
+                            handleMusicIconClick(song);
+                          }}
+                          showControls={true}
+                          compact={false}
+                        />
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setExpandedAudioSongId(song.id)}
+                        className={`text-xs ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-900'}`}
+                      >
+                        ▶ Show Audio Player
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

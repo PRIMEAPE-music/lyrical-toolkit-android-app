@@ -1,8 +1,34 @@
 // Songs service for interacting with self-hosted API
 import { getAuthHeader } from './authService';
 import { API_BASE_URL } from '../config/api';
+import { httpRequest, httpGet, httpPost, httpPut, httpDelete } from '../utils/http';
 
 const SONGS_API = `${API_BASE_URL}/songs`;
+
+// Helper function to convert backend snake_case to frontend camelCase
+const normalizeSong = (song) => {
+  if (!song) return null;
+
+  return {
+    id: song.id,
+    title: song.title,
+    lyrics: song.content || song.lyrics, // Backend uses 'content', frontend uses 'lyrics'
+    content: song.content || song.lyrics,
+    filename: song.filename,
+    wordCount: song.word_count || song.wordCount || 0,
+    lineCount: song.line_count || song.lineCount || 0,
+    dateAdded: song.date_added || song.dateAdded || new Date().toISOString(),
+    dateModified: song.date_modified || song.dateModified,
+    isExample: song.isExample || song.is_example || false,
+    // Audio fields
+    audioFileUrl: song.audio_file_url || song.audioFileUrl || null,
+    audioFileName: song.audio_file_name || song.audioFileName || null,
+    audioFileSize: song.audio_file_size || song.audioFileSize || null,
+    audioDuration: song.audio_duration || song.audioDuration || null,
+    // Drafts
+    drafts: song.drafts || []
+  };
+};
 
 // Helper function to handle API responses
 const handleResponse = async (response) => {
@@ -17,15 +43,17 @@ const handleResponse = async (response) => {
 export const getSongs = async () => {
   const authHeaders = await getAuthHeader();
 
-  const response = await fetch(SONGS_API, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders
-    }
+  const response = await httpGet(SONGS_API, {
+    'Content-Type': 'application/json',
+    ...authHeaders
   });
 
-  return handleResponse(response);
+  const data = await handleResponse(response);
+  // Normalize songs from snake_case to camelCase
+  return {
+    ...data,
+    songs: (data.songs || []).map(normalizeSong)
+  };
 };
 
 // Save/update multiple songs - now creates them individually
@@ -35,22 +63,18 @@ export const saveSongs = async (songs) => {
   // Create songs one by one
   const results = await Promise.allSettled(
     songs.map(song =>
-      fetch(SONGS_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders
-        },
-        body: JSON.stringify({
-          title: song.title,
-          content: song.content,
-          filename: song.filename
-        })
+      httpPost(SONGS_API, {
+        title: song.title,
+        content: song.content,
+        filename: song.filename
+      }, {
+        'Content-Type': 'application/json',
+        ...authHeaders
       }).then(handleResponse)
     )
   );
 
-  const successful = results.filter(r => r.status === 'fulfilled').map(r => r.value.song);
+  const successful = results.filter(r => r.status === 'fulfilled').map(r => normalizeSong(r.value.song));
   const failed = results.filter(r => r.status === 'rejected');
 
   return {
@@ -64,12 +88,9 @@ export const saveSongs = async (songs) => {
 export const clearAllSongs = async () => {
   const authHeaders = await getAuthHeader();
 
-  const response = await fetch(SONGS_API, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders
-    }
+  const response = await httpDelete(SONGS_API, {
+    'Content-Type': 'application/json',
+    ...authHeaders
   });
 
   return handleResponse(response);
@@ -79,66 +100,52 @@ export const clearAllSongs = async () => {
 export const getSong = async (songId) => {
   const authHeaders = await getAuthHeader();
 
-  const response = await fetch(`${SONGS_API}/${songId}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders
-    }
+  const response = await httpGet(`${SONGS_API}/${songId}`, {
+    'Content-Type': 'application/json',
+    ...authHeaders
   });
 
   const data = await handleResponse(response);
-  return data.song; // Extract song from response
+  return normalizeSong(data.song); // Extract and normalize song from response
 };
 
 // Create a new song (songId is now ignored, server generates it)
 export const createSong = async (songId, songData) => {
   const authHeaders = await getAuthHeader();
 
-  const response = await fetch(SONGS_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders
-    },
-    body: JSON.stringify({
-      title: songData.title,
-      content: songData.content,
-      filename: songData.filename
-    })
+  const response = await httpPost(SONGS_API, {
+    title: songData.title,
+    content: songData.content,
+    filename: songData.filename
+  }, {
+    'Content-Type': 'application/json',
+    ...authHeaders
   });
 
   const data = await handleResponse(response);
-  return data.song; // Return the created song
+  return normalizeSong(data.song); // Return the created song with normalized fields
 };
 
 // Update a specific song
 export const updateSong = async (songId, songData) => {
   const authHeaders = await getAuthHeader();
 
-  const response = await fetch(`${SONGS_API}/${songId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders
-    },
-    body: JSON.stringify(songData)
+  const response = await httpPut(`${SONGS_API}/${songId}`, songData, {
+    'Content-Type': 'application/json',
+    ...authHeaders
   });
 
   const data = await handleResponse(response);
-  return data.song; // Return the updated song
+  return normalizeSong(data.song); // Return the updated song with normalized fields
 };
 
 // Delete a specific song
 export const deleteSong = async (songId) => {
   const authHeaders = await getAuthHeader();
 
-  const response = await fetch(`${SONGS_API}/${songId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders
-    }
+  const response = await httpDelete(`${SONGS_API}/${songId}`, {
+    'Content-Type': 'application/json',
+    ...authHeaders
   });
 
   return handleResponse(response);
@@ -229,16 +236,13 @@ export const searchSongs = async (query) => {
     const authHeaders = await getAuthHeader();
 
     // Use server-side search endpoint
-    const response = await fetch(`${SONGS_API}/search/query?q=${encodeURIComponent(query)}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders
-      }
+    const response = await httpGet(`${SONGS_API}/search/query?q=${encodeURIComponent(query)}`, {
+      'Content-Type': 'application/json',
+      ...authHeaders
     });
 
     const data = await handleResponse(response);
-    return data.songs;
+    return (data.songs || []).map(normalizeSong);
   } catch (error) {
     // Fallback to client-side search
     console.warn('Server search failed, using client-side search:', error);
@@ -246,7 +250,7 @@ export const searchSongs = async (query) => {
     const { songs } = await getSongs();
 
     if (!query.trim()) {
-      return songs;
+      return songs; // Already normalized from getSongs()
     }
 
     const searchTerm = query.toLowerCase();
@@ -270,20 +274,20 @@ export const searchSongs = async (query) => {
       }
     }
 
-    return filteredSongs;
+    return filteredSongs; // Already normalized
   }
 };
 
 // Load example song for users with no songs
 export const getExampleSong = async () => {
   try {
-    const response = await fetch('/A GOOD DAY.txt');
+    const response = await httpRequest('/A GOOD DAY.txt', { method: 'GET' });
     if (!response.ok) {
       throw new Error('Failed to load example song');
     }
     const content = await response.text();
 
-    return {
+    const exampleSong = {
       id: 'example-a-good-day',
       title: 'A GOOD DAY',
       lyrics: content,           // Frontend expects lyrics field
@@ -299,6 +303,9 @@ export const getExampleSong = async () => {
       audio_file_size: 7296521,
       audio_duration: 182
     };
+
+    // Normalize to camelCase
+    return normalizeSong(exampleSong);
   } catch (error) {
     console.error('Failed to load example song:', error);
     return null;

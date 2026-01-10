@@ -128,7 +128,7 @@ const LyricsSearchAppContent = () => {
     }
   };
 
-  useSwipeGestures(handleSwipeLeft, handleSwipeRight, 50);
+  useSwipeGestures(handleSwipeLeft, handleSwipeRight, 75); // Increased from 50 to 75 (50% less sensitive)
 
   // Use custom hooks for localStorage
   const [searchHistory, setSearchHistory] = useSearchHistory();
@@ -230,12 +230,18 @@ const LyricsSearchAppContent = () => {
   useEffect(() => {
     const loadSongs = async () => {
       try {
+        isReloadingRef.current = true;
         console.log('🔄 Loading songs, authenticated:', isAuthenticated, 'storageType:', storageType);
         const allSongs = await loadAllSongs(isAuthenticated, storageType);
         setSongs(allSongs);
         console.log('✅ Loaded', allSongs.length, 'songs from', storageType);
       } catch (error) {
         console.error('Failed to load songs:', error);
+      } finally {
+        // Allow auto-save again after a brief delay
+        setTimeout(() => {
+          isReloadingRef.current = false;
+        }, 500);
       }
     };
 
@@ -256,9 +262,16 @@ const LyricsSearchAppContent = () => {
 
   // Use ref to track if we're currently reloading to prevent infinite loop
   const isReloadingRef = useRef(false);
+  const isSwitchingStorageRef = useRef(false);
 
-  // Save songs to localStorage when they change (all users)
+  // Save songs to localStorage when they change (ONLY for local storage mode)
   useEffect(() => {
+    // CRITICAL FIX: Only auto-save to localStorage when in local storage mode
+    if (storageType !== 'local') {
+      console.log('⏭️ Skipping auto-save: not in local storage mode');
+      return;
+    }
+
     // Skip auto-save if we're reloading or no songs
     if (songs.length === 0 || isReloadingRef.current) {
       return;
@@ -281,12 +294,12 @@ const LyricsSearchAppContent = () => {
     }, 2000); // 2 second debounce
 
     return () => clearTimeout(timeoutId);
-  }, [songs]);
+  }, [songs, storageType]);
 
   // Debug token expiration issues
   useEffect(() => {
     if (!isAuthenticated) return;
-    
+
     const checkTokenHealth = () => {
       const token = authService.getAccessToken();
       if (token) {
@@ -294,7 +307,7 @@ const LyricsSearchAppContent = () => {
           const payload = JSON.parse(atob(token.split('.')[1]));
           const now = Date.now() / 1000;
           const timeUntilExpiry = payload.exp - now;
-          
+
           if (timeUntilExpiry < 300) { // Less than 5 minutes
             console.log(`⚠️ Token expires in ${Math.floor(timeUntilExpiry)} seconds`);
           }
@@ -303,9 +316,9 @@ const LyricsSearchAppContent = () => {
         }
       }
     };
-    
-    // Check token health every minute
-    const interval = setInterval(checkTokenHealth, 60000);
+
+    // Check token health every 5 minutes (reduced from 1 minute to prevent memory buildup)
+    const interval = setInterval(checkTokenHealth, 300000);
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
@@ -463,15 +476,34 @@ const LyricsSearchAppContent = () => {
   // Delete individual song
   // Handle storage type change
   const handleStorageTypeChange = async (newStorageType) => {
+    // Prevent rapid switching
+    if (isSwitchingStorageRef.current) {
+      console.log('⏸️ Storage switch already in progress, ignoring...');
+      return;
+    }
+
     if (newStorageType === 'database' && !isAuthenticated) {
       alert('Please log in to use database storage');
       return;
     }
 
-    console.log('🔄 Switching storage type from', storageType, 'to', newStorageType);
-    setStorageType(newStorageType);
+    if (newStorageType === storageType) {
+      console.log('⏭️ Already on', storageType, 'storage');
+      return;
+    }
 
-    // Songs will automatically reload via useEffect dependency on storageType
+    try {
+      isSwitchingStorageRef.current = true;
+      console.log('🔄 Switching storage type from', storageType, 'to', newStorageType);
+      setStorageType(newStorageType);
+
+      // Songs will automatically reload via useEffect dependency on storageType
+    } finally {
+      // Add a delay before allowing another switch
+      setTimeout(() => {
+        isSwitchingStorageRef.current = false;
+      }, 1000);
+    }
   };
 
   // Transfer song between storage types
@@ -1066,13 +1098,13 @@ const LyricsSearchAppContent = () => {
     }
   }, [handleSaveCurrentTab, closeTab, openTabs, notepadState]);
 
-  // Auto-save logic - runs every 3 seconds
+  // Auto-save logic - runs every 5 seconds (reduced from 3 to prevent memory buildup)
   useEffect(() => {
     if (openTabs.length === 0) return;
 
     const interval = setInterval(() => {
       handleSaveCurrentTab();
-    }, 3000); // 3 seconds
+    }, 5000); // 5 seconds
 
     return () => clearInterval(interval);
   }, [openTabs, handleSaveCurrentTab]);
