@@ -1910,8 +1910,8 @@ const LyricsSearchAppContent = () => {
               <AISettings darkMode={darkMode} />
             )}
 
-            {activeTab === 'upload' && (
-              <UploadTab 
+            <div style={{ display: activeTab === 'upload' ? 'block' : 'none' }}>
+              <UploadTab
                 songs={songs}
                 onFileUpload={fileUploadHook.handleFileUpload}
                 onDeleteSong={deleteSong}
@@ -1944,7 +1944,7 @@ const LyricsSearchAppContent = () => {
                 expandedAudioSongId={expandedAudioSongId}
                 setExpandedAudioSongId={setExpandedAudioSongId}
               />
-            )}
+            </div>
 
             {activeTab === 'stats' && (
               <StatsTab 
