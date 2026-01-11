@@ -143,7 +143,9 @@ const AudioPlayer = ({
           setIsLoading(false);
           setWaveformLoading(false);
           console.log('✅ WaveSurfer ready, duration:', duration);
-          console.log('📊 Container dimensions:', containerRef.current.getBoundingClientRect());
+          if (containerRef.current) {
+            console.log('📊 Container dimensions:', containerRef.current.getBoundingClientRect());
+          }
         });
 
         ws.on('loading', (percent) => {
@@ -167,7 +169,7 @@ const AudioPlayer = ({
           console.error('❌ WaveSurfer error:', error);
         });
 
-        // Load the audio - handle IndexedDB URLs
+        // Load the audio - handle IndexedDB URLs and Supabase URLs on mobile
         console.log('🎵 Loading audio URL:', audioUrl);
         let playableUrl = audioUrl;
 
@@ -177,6 +179,66 @@ const AudioPlayer = ({
           console.log('🎵 Converting IndexedDB URL to blob URL for song:', songId);
           playableUrl = await audioStorageService.getAudioBlobURL(songId);
           console.log('✅ Got blob URL:', playableUrl);
+        }
+        // On mobile/Android, convert Supabase URLs to blob URLs to avoid CORS issues
+        else if (audioUrl.includes('supabase.co')) {
+          const isMobile = window.innerWidth <= 768;
+          const isCapacitor = window.Capacitor !== undefined;
+
+          if (isMobile || isCapacitor) {
+            console.log('📱 Mobile/Capacitor detected, converting Supabase URL to blob URL');
+            console.log('🔍 Original URL:', audioUrl);
+            try {
+              // Use CapacitorHttp if available (bypasses CORS on native apps)
+              if (isCapacitor && window.Capacitor?.Plugins?.CapacitorHttp) {
+                console.log('🔌 Using CapacitorHttp to fetch audio');
+                const { CapacitorHttp } = window.Capacitor.Plugins;
+                const httpResponse = await CapacitorHttp.get({
+                  url: audioUrl,
+                  responseType: 'arraybuffer'
+                });
+
+                console.log('📥 CapacitorHttp response status:', httpResponse.status);
+                console.log('📦 Response data type:', typeof httpResponse.data);
+                if (httpResponse.status !== 200) {
+                  throw new Error(`HTTP ${httpResponse.status}`);
+                }
+
+                // Convert arraybuffer to blob
+                const arrayBuffer = httpResponse.data;
+                const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+                console.log('📦 Created blob, size:', blob.size);
+                playableUrl = URL.createObjectURL(blob);
+                console.log('✅ Converted to blob URL via CapacitorHttp');
+              } else {
+                // Fallback to regular fetch for mobile web browsers
+                console.log('🌐 Using fetch to load audio');
+                const response = await fetch(audioUrl, {
+                  mode: 'cors',
+                  credentials: 'omit',
+                  headers: {
+                    'Accept': 'audio/*'
+                  }
+                });
+                console.log('📥 Fetch response status:', response.status);
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  console.error('❌ Fetch error response:', errorText);
+                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const blob = await response.blob();
+                console.log('📦 Blob type:', blob.type, 'size:', blob.size);
+                playableUrl = URL.createObjectURL(blob);
+                console.log('✅ Converted to blob URL:', playableUrl.substring(0, 50) + '...');
+              }
+            } catch (fetchError) {
+              console.error('❌ Failed to convert Supabase URL to blob:', fetchError);
+              console.error('❌ Error name:', fetchError.name);
+              console.error('❌ Error message:', fetchError.message);
+              console.error('❌ Full error:', JSON.stringify(fetchError, Object.getOwnPropertyNames(fetchError)));
+              throw new Error(`Failed to load audio from cloud storage: ${fetchError.message}`);
+            }
+          }
         }
 
         await ws.load(playableUrl);
