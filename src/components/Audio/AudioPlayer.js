@@ -79,7 +79,20 @@ const AudioPlayer = ({
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
-  
+
+  // Cleanup on unmount - ensure audio stops playing
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Component unmounting, cleaning up WaveSurfer');
+      if (waveSurfer) {
+        if (waveSurfer.isPlaying()) {
+          waveSurfer.pause();
+        }
+        waveSurfer.destroy();
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const audioRef = useRef(null);
   const waveformRef = useRef(null);
   const waveformRefVertical = useRef(null);
@@ -256,6 +269,11 @@ const AudioPlayer = ({
 
     return () => {
       if (waveSurfer) {
+        console.log('🧹 Cleaning up WaveSurfer instance');
+        // Pause before destroying to prevent audio from continuing
+        if (waveSurfer.isPlaying()) {
+          waveSurfer.pause();
+        }
         waveSurfer.destroy();
       }
     };
