@@ -36,7 +36,8 @@
       "Bash(npx cap sync android)",
       "Bash(npx cap:*)",
       "Bash(where:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(copy:*)"
     ],
     "defaultMode": "acceptEdits"
   }

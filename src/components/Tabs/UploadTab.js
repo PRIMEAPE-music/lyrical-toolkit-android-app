@@ -28,7 +28,12 @@ const UploadTab = ({
   onStorageTypeChange = null,
   isAuthenticated = false,
   // Transfer props
-  onTransferSong = null
+  onTransferSong = null,
+  // Draft-related props (optional)
+  onCreateDraft = null,
+  onDeleteDraft = null,
+  onOpenDraft = null,
+  MAX_DRAFTS_PER_SONG = 5
 }) => {
   // Ref for the hidden audio file input
   const audioInputRef = useRef(null);
@@ -69,11 +74,12 @@ const UploadTab = ({
     setIsUploading(true);
 
     try {
-      // Upload the file
+      // Upload the file - pass storageType to use correct storage backend
       const result = await audioStorageService.uploadAudioFile(
         file,
         uploadingSongId,
-        userId || 'anonymous'
+        userId || 'anonymous',
+        storageType  // 'local' uses IndexedDB, 'database' uses Supabase Storage
       );
 
       // Call the parent's upload success handler

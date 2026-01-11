@@ -57,6 +57,7 @@ const FloatingNotepad = ({
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isTextareaFocused, setIsTextareaFocused] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {

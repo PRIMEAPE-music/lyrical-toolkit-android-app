@@ -201,7 +201,12 @@ const LyricsSearchAppContent = () => {
               content: song.lyrics || song.content,
               filename: song.filename,
               // Include drafts in the update
-              drafts: song.drafts || []
+              drafts: song.drafts || [],
+              // Include audio metadata for persistence across devices
+              audioFileUrl: song.audioFileUrl || null,
+              audioFileName: song.audioFileName || null,
+              audioFileSize: song.audioFileSize || null,
+              audioDuration: song.audioDuration || null
             });
           } catch (err) {
             console.warn(`Failed to update song ${song.id} on server:`, err.message);
@@ -1533,11 +1538,12 @@ const LyricsSearchAppContent = () => {
     }
 
     try {
-      // Upload the file
+      // Upload the file - pass storageType to use correct storage backend
       const result = await audioStorageService.uploadAudioFile(
         file,
         audioUploadTargetSongId,
-        user?.userId || 'anonymous'
+        user?.userId || 'anonymous',
+        storageType  // 'local' uses IndexedDB, 'database' uses Supabase Storage
       );
 
       // Call the upload success handler

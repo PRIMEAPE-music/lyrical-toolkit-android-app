@@ -1,9 +1,12 @@
 /**
- * Audio Storage Service - IndexedDB Implementation
- * Stores audio files locally using IndexedDB (can handle large files)
+ * Audio Storage Service - Dual Storage Implementation
+ * Supports both local IndexedDB storage and Supabase cloud storage
+ * - Local mode: Uses IndexedDB for device-local storage
+ * - Database mode: Uses Supabase Storage via Netlify functions for cross-device access
  */
 
 import * as audioIndexedDB from '../utils/audioIndexedDB';
+import { API_BASE_URL } from '../config/api';
 
 // Audio file validation constants
 export const AUDIO_CONFIG = {
@@ -81,9 +84,78 @@ export const getAudioDuration = (file) => {
   });
 };
 
-// Upload audio file to IndexedDB
-export const uploadAudioFile = async (file, songId, userId = 'anonymous') => {
-  console.log('🎵 Uploading audio file to IndexedDB:', file.name);
+// Upload audio file to Supabase Storage (for database/cloud mode)
+const uploadToSupabase = async (file, songId, userId = 'anonymous') => {
+  console.log('☁️ Uploading audio file to Supabase Storage:', file.name);
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('filename', file.name);
+    formData.append('userId', userId);
+    formData.append('songId', String(songId));
+
+    const response = await fetch(`${API_BASE_URL}/upload-audio`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.details || `Upload failed with status ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Audio uploaded to Supabase:', result);
+
+    // Get duration locally since Supabase doesn't calculate it
+    const duration = await getAudioDuration(file);
+
+    return {
+      audioUrl: result.publicUrl,
+      filename: file.name,
+      size: file.size,
+      duration
+    };
+  } catch (error) {
+    console.error('❌ Supabase upload error:', error);
+    throw error;
+  }
+};
+
+// Upload audio file to IndexedDB (for local mode)
+const uploadToIndexedDB = async (file, songId, userId = 'anonymous') => {
+  console.log('💾 Uploading audio file to IndexedDB:', file.name);
+
+  // Get duration
+  const duration = await getAudioDuration(file);
+
+  // Save to IndexedDB with songId as the key
+  const metadata = {
+    filename: file.name,
+    size: file.size,
+    duration
+  };
+
+  await audioIndexedDB.saveAudioFile(songId, file, metadata);
+
+  // Generate a local reference URL (we'll use this to identify the file)
+  const audioUrl = `indexeddb://${songId}`;
+
+  console.log('✅ Audio file uploaded to IndexedDB');
+
+  return {
+    audioUrl,
+    filename: file.name,
+    size: file.size,
+    duration
+  };
+};
+
+// Upload audio file - automatically chooses storage based on storageType
+// storageType: 'local' uses IndexedDB, 'database' uses Supabase Storage
+export const uploadAudioFile = async (file, songId, userId = 'anonymous', storageType = 'local') => {
+  console.log('🎵 Uploading audio file:', file.name, 'to', storageType, 'storage');
 
   try {
     // Validate file
@@ -92,29 +164,12 @@ export const uploadAudioFile = async (file, songId, userId = 'anonymous') => {
       throw new Error(validation.errors.join(', '));
     }
 
-    // Get duration
-    const duration = await getAudioDuration(file);
-
-    // Save to IndexedDB with songId as the key
-    const metadata = {
-      filename: file.name,
-      size: file.size,
-      duration
-    };
-
-    await audioIndexedDB.saveAudioFile(songId, file, metadata);
-
-    // Generate a local reference URL (we'll use this to identify the file)
-    const audioUrl = `indexeddb://${songId}`;
-
-    console.log('✅ Audio file uploaded to IndexedDB');
-
-    return {
-      audioUrl,
-      filename: file.name,
-      size: file.size,
-      duration
-    };
+    // Choose storage based on storageType
+    if (storageType === 'database') {
+      return await uploadToSupabase(file, songId, userId);
+    } else {
+      return await uploadToIndexedDB(file, songId, userId);
+    }
   } catch (error) {
     console.error('❌ Error uploading audio file:', error);
     throw error;

@@ -8,6 +8,22 @@ const DB_NAME = 'LyricToolkitAudio';
 const DB_VERSION = 1;
 const STORE_NAME = 'audioFiles';
 
+// Helper function to get ArrayBuffer from File (with fallback for older browsers)
+const fileToArrayBuffer = (file) => {
+  // Use native arrayBuffer() if available (modern browsers)
+  if (file.arrayBuffer) {
+    return file.arrayBuffer();
+  }
+
+  // Fallback for older browsers using FileReader
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsArrayBuffer(file);
+  });
+};
+
 // Open IndexedDB database
 const openDB = () => {
   return new Promise((resolve, reject) => {
@@ -35,11 +51,15 @@ export const saveAudioFile = async (id, file, metadata = {}) => {
     // IndexedDB transactions auto-commit when the event loop processes other events
     // If we await inside a transaction, it will close before we can use it
     console.log('🔄 Converting file to ArrayBuffer for storage...');
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await fileToArrayBuffer(file);
     console.log('✅ Converted to ArrayBuffer, size:', arrayBuffer.byteLength);
 
+    // CRITICAL: Always convert id to string for consistent IndexedDB key matching
+    // Song IDs can be numbers, but URLs convert them to strings when extracted
+    const stringId = String(id);
+
     const audioData = {
-      id,
+      id: stringId,
       arrayBuffer, // Store as ArrayBuffer instead of File
       filename: metadata.filename || file.name,
       size: metadata.size || file.size,
@@ -66,7 +86,7 @@ export const saveAudioFile = async (id, file, metadata = {}) => {
 
       const request = store.put(audioData);
       request.onsuccess = () => {
-        console.log('✅ Audio file saved to IndexedDB:', id, 'size:', arrayBuffer.byteLength);
+        console.log('✅ Audio file saved to IndexedDB:', stringId, 'size:', arrayBuffer.byteLength);
         resolve(audioData);
       };
       request.onerror = () => {
@@ -83,12 +103,15 @@ export const saveAudioFile = async (id, file, metadata = {}) => {
 // Get audio file from IndexedDB
 export const getAudioFile = async (id) => {
   try {
+    // CRITICAL: Always convert id to string for consistent IndexedDB key matching
+    const stringId = String(id);
+
     const db = await openDB();
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
-      const request = store.get(id);
+      const request = store.get(stringId);
       request.onsuccess = () => {
         if (request.result) {
           console.log('✅ Audio file retrieved from IndexedDB:', id);
@@ -109,12 +132,15 @@ export const getAudioFile = async (id) => {
 // Delete audio file from IndexedDB
 export const deleteAudioFile = async (id) => {
   try {
+    // CRITICAL: Always convert id to string for consistent IndexedDB key matching
+    const stringId = String(id);
+
     const db = await openDB();
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
-      const request = store.delete(id);
+      const request = store.delete(stringId);
       request.onsuccess = () => {
         console.log('✅ Audio file deleted from IndexedDB:', id);
         resolve(true);
