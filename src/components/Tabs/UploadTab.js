@@ -33,7 +33,10 @@ const UploadTab = ({
   onCreateDraft = null, // eslint-disable-line @typescript-eslint/no-unused-vars
   onDeleteDraft = null, // eslint-disable-line @typescript-eslint/no-unused-vars
   onOpenDraft = null, // eslint-disable-line @typescript-eslint/no-unused-vars
-  MAX_DRAFTS_PER_SONG = 5 // eslint-disable-line @typescript-eslint/no-unused-vars
+  MAX_DRAFTS_PER_SONG = 5, // eslint-disable-line @typescript-eslint/no-unused-vars
+  // Audio player expansion state (passed from parent for persistence)
+  expandedAudioSongId = null,
+  setExpandedAudioSongId = null
 }) => {
   // Ref for the hidden audio file input
   const audioInputRef = useRef(null);
@@ -41,8 +44,6 @@ const UploadTab = ({
   const [uploadingSongId, setUploadingSongId] = useState(null);
   // Track upload progress
   const [isUploading, setIsUploading] = useState(false);
-  // Track which song's audio player is expanded (to prevent memory issues)
-  const [expandedAudioSongId, setExpandedAudioSongId] = useState(null);
 
   // Handle clicking the music icon - directly open file picker
   const handleMusicIconClick = (song) => {
@@ -89,7 +90,9 @@ const UploadTab = ({
 
       // Auto-expand the audio player after successful upload
       // This ensures the user sees the player immediately on Android
-      setExpandedAudioSongId(uploadingSongId);
+      if (setExpandedAudioSongId) {
+        setExpandedAudioSongId(uploadingSongId);
+      }
     } catch (error) {
       console.error('Audio upload error:', error);
       alert(`Failed to upload audio: ${error.message}`);
@@ -202,7 +205,7 @@ const UploadTab = ({
         }`}>
           {storageType === 'local' ? (
             <p>
-              Songs are stored on this device only.
+              <strong>Local Storage:</strong> Songs are stored on this device only.
             </p>
           ) : (
             <p>
@@ -366,7 +369,7 @@ const UploadTab = ({
                       <>
                         <div className="flex justify-center">
                           <button
-                            onClick={() => setExpandedAudioSongId(null)}
+                            onClick={() => setExpandedAudioSongId && setExpandedAudioSongId(null)}
                             className={`mb-2 text-xs ${darkMode ? 'text-gray-900 hover:text-black' : 'text-gray-900 hover:text-black'}`}
                           >
                             ▼ Hide Audio Player
@@ -397,7 +400,7 @@ const UploadTab = ({
                     ) : (
                       <div className="flex justify-center">
                         <button
-                          onClick={() => setExpandedAudioSongId(song.id)}
+                          onClick={() => setExpandedAudioSongId && setExpandedAudioSongId(song.id)}
                           className={`text-xs ${darkMode ? 'text-gray-900 hover:text-black' : 'text-gray-900 hover:text-black'}`}
                         >
                           ▶ Show Audio Player

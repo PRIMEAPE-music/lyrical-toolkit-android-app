@@ -104,6 +104,8 @@ const LyricsSearchAppContent = () => {
   const [selectedSongForAudio, setSelectedSongForAudio] = useState(null);
   const audioFileInputRef = useRef(null);
   const [audioUploadTargetSongId, setAudioUploadTargetSongId] = useState(null);
+  // Track which song's audio player is expanded (persistent across tab switches)
+  const [expandedAudioSongId, setExpandedAudioSongId] = useState(null);
 
   // Swipe gestures for mobile tab switching
   const tabOrder = ['search', 'dictionary', 'upload', 'rhymes', 'stats'];
@@ -1938,6 +1940,9 @@ const LyricsSearchAppContent = () => {
                 onDeleteDraft={handleDeleteDraft}
                 onOpenDraft={handleOpenDraft}
                 MAX_DRAFTS_PER_SONG={MAX_DRAFTS_PER_SONG}
+                // Audio player expansion state (persistent across tab switches)
+                expandedAudioSongId={expandedAudioSongId}
+                setExpandedAudioSongId={setExpandedAudioSongId}
               />
             )}
 
