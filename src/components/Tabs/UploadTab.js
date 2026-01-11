@@ -30,10 +30,10 @@ const UploadTab = ({
   // Transfer props
   onTransferSong = null,
   // Draft-related props (optional)
-  onCreateDraft = null,
-  onDeleteDraft = null,
-  onOpenDraft = null,
-  MAX_DRAFTS_PER_SONG = 5
+  onCreateDraft = null, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onDeleteDraft = null, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onOpenDraft = null, // eslint-disable-line @typescript-eslint/no-unused-vars
+  MAX_DRAFTS_PER_SONG = 5 // eslint-disable-line @typescript-eslint/no-unused-vars
 }) => {
   // Ref for the hidden audio file input
   const audioInputRef = useRef(null);
@@ -86,6 +86,10 @@ const UploadTab = ({
       if (onAudioUpload) {
         await onAudioUpload(uploadingSongId, result);
       }
+
+      // Auto-expand the audio player after successful upload
+      // This ensures the user sees the player immediately on Android
+      setExpandedAudioSongId(uploadingSongId);
     } catch (error) {
       console.error('Audio upload error:', error);
       alert(`Failed to upload audio: ${error.message}`);

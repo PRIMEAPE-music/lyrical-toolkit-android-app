@@ -70,12 +70,13 @@ const parseCapacitorJson = (event) => {
 };
 
 // Reliable multipart parser using busboy
+// FIXED: Added early validation and improved memory handling to prevent crashes
 const parseMultipart = async (event) => {
   return new Promise((resolve, reject) => {
     try {
       const busboy = require('busboy');
       const contentType = event.headers['content-type'] || event.headers['Content-Type'];
-      
+
       if (!contentType || !contentType.includes('multipart/form-data')) {
         reject(new Error('Invalid content type - must be multipart/form-data'));
         return;
@@ -89,39 +90,60 @@ const parseMultipart = async (event) => {
         bodyBuffer = Buffer.from(event.body);
       }
 
-      const bb = busboy({ 
+      const bb = busboy({
         headers: { 'content-type': contentType },
         limits: {
           fileSize: 50 * 1024 * 1024, // 50MB limit
           files: 1
         }
       });
-      
+
       const result = {};
       let fileReceived = false;
 
       bb.on('file', (name, file, info) => {
         const { filename, mimeType } = info;
         console.log(`📄 Receiving file: ${name} (${filename}, ${mimeType})`);
-        
+
+        // FIXED: Use array to collect chunks for better memory management
         const chunks = [];
         let totalSize = 0;
         const maxSize = 50 * 1024 * 1024; // 50MB safety limit
-        
+
+        // Track memory usage to prevent exhaustion
+        let lastMemoryCheck = Date.now();
+
         file.on('data', (data) => {
           totalSize += data.length;
-          
-          // Early size check to prevent memory issues
+
+          // FIXED: Early size check to prevent memory issues
           if (totalSize > maxSize) {
+            file.destroy();  // Stop reading immediately
             reject(new Error(`File too large: ${totalSize} bytes exceeds ${maxSize} byte limit`));
             return;
           }
-          
+
           chunks.push(data);
-          
-          // Log progress for large files
-          if (totalSize % (1024 * 1024) === 0 || totalSize > 1024 * 1024) {
-            console.log(`📈 Received: ${Math.round(totalSize / 1024 / 1024 * 10) / 10}MB`);
+
+          // FIXED: Periodic memory monitoring to detect issues early
+          const now = Date.now();
+          if (now - lastMemoryCheck > 1000) { // Check every second
+            lastMemoryCheck = now;
+
+            if (process.memoryUsage) {
+              const memory = process.memoryUsage();
+              const heapUsedMB = Math.round(memory.heapUsed / 1024 / 1024);
+
+              // Log progress
+              console.log(`📈 Upload progress: ${Math.round(totalSize / 1024 / 1024 * 10) / 10}MB, Heap: ${heapUsedMB}MB`);
+
+              // FIXED: Abort if memory usage is dangerously high (>800MB on 1024MB limit)
+              if (heapUsedMB > 800) {
+                file.destroy();
+                reject(new Error(`Memory limit approaching: ${heapUsedMB}MB used. Aborting to prevent crash.`));
+                return;
+              }
+            }
           }
         });
         
@@ -179,6 +201,12 @@ const parseMultipart = async (event) => {
         reject(new Error('Multipart parsing failed: ' + err.message));
       });
 
+      // FIXED: Handle busboy limit events
+      bb.on('limit', () => {
+        console.error('❌ Busboy limit exceeded');
+        reject(new Error('File size limit exceeded during upload'));
+      });
+
       // Write the buffer to busboy
       bb.write(bodyBuffer);
       bb.end();
@@ -211,17 +239,17 @@ exports.handler = async (event, context) => {
     console.log('📏 Body length:', event.body ? event.body.length : 0);
     console.log('🔤 Is base64 encoded:', event.isBase64Encoded);
     
-    // Check for suspiciously large requests early
-    const contentLength = event.headers['content-length'];
-    if (contentLength) {
-      const sizeInMB = parseInt(contentLength) / (1024 * 1024);
+    // Check for suspiciously large requests early (logging only - validation happens later)
+    const requestContentLength = event.headers['content-length'];
+    if (requestContentLength) {
+      const sizeInMB = parseInt(requestContentLength) / (1024 * 1024);
       console.log('📐 Request size:', sizeInMB.toFixed(2), 'MB');
-      
+
       if (sizeInMB > 50) {
         console.warn('⚠️ Large request detected:', sizeInMB.toFixed(2), 'MB');
       }
     }
-    
+
     // Memory usage check
     if (process.memoryUsage) {
       const memory = process.memoryUsage();
@@ -231,7 +259,7 @@ exports.handler = async (event, context) => {
         heapTotal: Math.round(memory.heapTotal / 1024 / 1024) + 'MB'
       });
     }
-    
+
     console.log('🎵 === SIMPLIFIED AUDIO UPLOAD FUNCTION START ===');
   
   // Enhanced CORS headers
@@ -260,6 +288,33 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({ error: `Method ${event.httpMethod} not allowed` })
     };
   }
+
+    // FIXED: Early file size validation BEFORE parsing
+    // This prevents memory exhaustion from processing large files
+    const contentLength = event.headers['content-length'] || event.headers['Content-Length'];
+    if (contentLength) {
+      const sizeInBytes = parseInt(contentLength);
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      const MAX_FILE_SIZE_MB = 50;
+
+      console.log(`📏 Content-Length validation: ${sizeInMB.toFixed(2)}MB (max: ${MAX_FILE_SIZE_MB}MB)`);
+
+      if (sizeInMB > MAX_FILE_SIZE_MB) {
+        console.error(`❌ File too large: ${sizeInMB.toFixed(2)}MB exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            error: 'File too large',
+            details: `File size of ${sizeInMB.toFixed(2)}MB exceeds maximum allowed size of ${MAX_FILE_SIZE_MB}MB`,
+            maxSizeBytes: MAX_FILE_SIZE_MB * 1024 * 1024,
+            receivedBytes: sizeInBytes
+          })
+        };
+      }
+    } else {
+      console.warn('⚠️ No Content-Length header provided');
+    }
 
     // Step 1: Check Environment Variables
     console.log('🔍 === STEP 1: ENVIRONMENT VARIABLES ===');

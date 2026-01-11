@@ -125,7 +125,14 @@ const uploadWithXHR = (uploadUrl, formData, file) => {
           let errorMessage = `Upload failed with status ${xhr.status}`;
           try {
             const errorData = JSON.parse(xhr.responseText);
-            errorMessage = errorData.error || errorData.details || errorMessage;
+            // FIXED: Provide user-friendly messages for common errors
+            if (errorData.error && errorData.error.includes('too large')) {
+              errorMessage = `File too large: ${errorData.details || 'Maximum file size is 50MB'}`;
+            } else if (errorData.error && errorData.error.includes('Memory limit')) {
+              errorMessage = 'File is too large for server to process. Please use a smaller file (max 50MB).';
+            } else {
+              errorMessage = errorData.error || errorData.details || errorMessage;
+            }
           } catch (e) {
             errorMessage = xhr.responseText || errorMessage;
           }
@@ -174,7 +181,14 @@ const uploadWithFetch = async (uploadUrl, formData, file) => {
       let errorMessage = `Upload failed with status ${response.status}`;
       try {
         const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error || errorData.details || errorMessage;
+        // FIXED: Provide user-friendly messages for common errors
+        if (errorData.error && errorData.error.includes('too large')) {
+          errorMessage = `File too large: ${errorData.details || 'Maximum file size is 50MB'}`;
+        } else if (errorData.error && errorData.error.includes('Memory limit')) {
+          errorMessage = 'File is too large for server to process. Please use a smaller file (max 50MB).';
+        } else {
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        }
       } catch (e) {
         errorMessage = errorText || errorMessage;
       }
