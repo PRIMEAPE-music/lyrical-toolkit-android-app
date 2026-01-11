@@ -1,35 +1,113 @@
-// Improved syllable counter
-export const countSyllables = (word) => {
-  if (!word || typeof word !== 'string') return 0;
-  
+// =============================================================================
+// MEMOIZATION UTILITIES
+// =============================================================================
+
+// LRU Cache implementation with bounded size to prevent memory leaks
+const createLRUCache = (maxSize = 1000) => {
+  const cache = new Map();
+
+  return {
+    get(key) {
+      if (!cache.has(key)) return undefined;
+      // Move to end (most recently used)
+      const value = cache.get(key);
+      cache.delete(key);
+      cache.set(key, value);
+      return value;
+    },
+    set(key, value) {
+      if (cache.has(key)) {
+        cache.delete(key);
+      } else if (cache.size >= maxSize) {
+        // Delete oldest entry (first in Map)
+        const firstKey = cache.keys().next().value;
+        cache.delete(firstKey);
+      }
+      cache.set(key, value);
+      return value;
+    },
+    has(key) {
+      return cache.has(key);
+    },
+    clear() {
+      cache.clear();
+    },
+    get size() {
+      return cache.size;
+    }
+  };
+};
+
+// Caches for expensive operations
+const syllableCache = createLRUCache(2000);  // Words are small, can cache more
+const stressPatternCache = createLRUCache(1000);
+const meterCache = createLRUCache(500);  // Stress patterns as keys
+
+// Utility to clear all caches (useful for testing or memory management)
+export const clearTextAnalysisCaches = () => {
+  syllableCache.clear();
+  stressPatternCache.clear();
+  meterCache.clear();
+};
+
+// Utility to get cache statistics (useful for debugging)
+export const getCacheStats = () => ({
+  syllableCache: syllableCache.size,
+  stressPatternCache: stressPatternCache.size,
+  meterCache: meterCache.size
+});
+
+// =============================================================================
+// SYLLABLE COUNTING (Memoized)
+// =============================================================================
+
+// Core syllable counting logic (internal, not memoized)
+const countSyllablesCore = (word) => {
   word = word.toLowerCase().trim();
   if (word.length === 0) return 0;
   if (word.length <= 2) return 1;
-  
+
   // Remove common word endings that don't add syllables
   word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
   word = word.replace(/^y/, '');
-  
+
   // Count vowel groups
   let syllableCount = 0;
   let previousWasVowel = false;
-  
+
   for (let i = 0; i < word.length; i++) {
     const char = word[i];
     const isVowel = /[aeiouy]/.test(char);
-    
+
     if (isVowel && !previousWasVowel) {
       syllableCount++;
     }
     previousWasVowel = isVowel;
   }
-  
+
   // Handle special cases
   if (word.endsWith('le') && word.length > 2 && !/[aeiouy]/.test(word[word.length - 3])) {
     syllableCount++;
   }
-  
+
   return Math.max(1, syllableCount);
+};
+
+// Memoized syllable counter (public API)
+export const countSyllables = (word) => {
+  if (!word || typeof word !== 'string') return 0;
+
+  const normalizedWord = word.toLowerCase().trim();
+  if (normalizedWord.length === 0) return 0;
+
+  // Check cache first
+  const cached = syllableCache.get(normalizedWord);
+  if (cached !== undefined) return cached;
+
+  // Compute and cache
+  const result = countSyllablesCore(normalizedWord);
+  syllableCache.set(normalizedWord, result);
+  return result;
 };
 
 // Calculate reading level using Flesch-Kincaid Grade Level formula
@@ -225,33 +303,12 @@ export const highlightText = (text, query, isExactMatch = false) => {
   });
 };
 
-// Enhanced stress pattern detection using phonetic data and English stress rules
-export const detectStressPattern = (word, phoneticData = null) => {
-  if (!word || typeof word !== 'string') return [];
-  
-  const syllableCount = countSyllables(word);
-  if (syllableCount <= 1) return syllableCount === 1 ? ['1'] : [];
-  
-  // If we have phonetic data, use it for more accurate stress detection
-  if (phoneticData && typeof phoneticData === 'string') {
-    const phonemes = phoneticData.split(' ');
-    const stressPattern = [];
-    
-    phonemes.forEach(phoneme => {
-      if (/[12]$/.test(phoneme)) { // Primary or secondary stress
-        stressPattern.push(phoneme.endsWith('1') ? '1' : '2');
-      } else if (/0$/.test(phoneme)) { // Unstressed
-        stressPattern.push('0');
-      }
-    });
-    
-    if (stressPattern.length > 0) return stressPattern;
-  }
-  
+// Core stress pattern detection logic (internal, not memoized)
+const detectStressPatternCore = (word, syllableCount) => {
   // Fallback to rule-based stress detection for English
   const stresses = [];
   const cleanWord = word.toLowerCase().replace(/[^a-z]/g, '');
-  
+
   // Common English stress patterns
   if (syllableCount === 2) {
     // Most 2-syllable nouns: first syllable stressed
@@ -278,8 +335,41 @@ export const detectStressPattern = (word, phoneticData = null) => {
       stresses.push(i % 2 === 0 ? '1' : '0');
     }
   }
-  
+
   return stresses;
+};
+
+// Enhanced stress pattern detection using phonetic data and English stress rules (Memoized)
+export const detectStressPattern = (word, phoneticData = null) => {
+  if (!word || typeof word !== 'string') return [];
+
+  const syllableCount = countSyllables(word);
+  if (syllableCount <= 1) return syllableCount === 1 ? ['1'] : [];
+
+  // If we have phonetic data, use it for more accurate stress detection (not cached - varies by data)
+  if (phoneticData && typeof phoneticData === 'string') {
+    const phonemes = phoneticData.split(' ');
+    const stressPattern = [];
+
+    phonemes.forEach(phoneme => {
+      if (/[12]$/.test(phoneme)) { // Primary or secondary stress
+        stressPattern.push(phoneme.endsWith('1') ? '1' : '2');
+      } else if (/0$/.test(phoneme)) { // Unstressed
+        stressPattern.push('0');
+      }
+    });
+
+    if (stressPattern.length > 0) return stressPattern;
+  }
+
+  // For rule-based detection without phonetic data, use cache
+  const normalizedWord = word.toLowerCase().trim();
+  const cached = stressPatternCache.get(normalizedWord);
+  if (cached !== undefined) return [...cached]; // Return copy to prevent mutation
+
+  const result = detectStressPatternCore(normalizedWord, syllableCount);
+  stressPatternCache.set(normalizedWord, result);
+  return [...result]; // Return copy to prevent mutation
 };
 
 // Analyze meter patterns in lyrics
@@ -323,17 +413,8 @@ export const analyzeMeterPatterns = (lyrics, phoneticMap = {}) => {
   return lineAnalysis;
 };
 
-// Identify common meter patterns
-const identifyMeter = (stresses) => {
-  if (!stresses || stresses.length < 2) {
-    return { type: 'insufficient', confidence: 0 };
-  }
-  
-  const length = stresses.length;
-  
-  // Convert to binary for pattern matching (1 = stressed, 0 = unstressed)
-  const binaryPattern = stresses.map(s => s === '1' ? '1' : '0').join('');
-  
+// Core meter identification logic (internal, not memoized)
+const identifyMeterCore = (binaryPattern, length) => {
   // Common meter patterns
   const meters = {
     iambic: /^(01)+0?$/,        // da-DUM da-DUM (01 01...)
@@ -343,7 +424,7 @@ const identifyMeter = (stresses) => {
     spondaic: /^(11)+1?$/,      // DUM-DUM DUM-DUM (11 11...)
     pyrrhic: /^(00)+0?$/        // da-da da-da (00 00...)
   };
-  
+
   // Test each meter pattern
   for (const [meterName, regex] of Object.entries(meters)) {
     if (regex.test(binaryPattern)) {
@@ -351,15 +432,19 @@ const identifyMeter = (stresses) => {
       const expectedLength = getMeterExpectedLength(meterName, length);
       const lengthMatch = Math.abs(length - expectedLength) <= 1;
       const confidence = lengthMatch ? 0.9 : 0.7;
-      
+
       return { type: meterName, confidence };
     }
   }
-  
-  // Check for mixed or irregular patterns
-  const stressedCount = stresses.filter(s => s === '1').length;
-  const unstressedCount = stresses.filter(s => s === '0').length;
-  
+
+  // Check for mixed or irregular patterns based on binary string
+  let stressedCount = 0;
+  let unstressedCount = 0;
+  for (const char of binaryPattern) {
+    if (char === '1') stressedCount++;
+    else unstressedCount++;
+  }
+
   if (stressedCount === unstressedCount) {
     return { type: 'alternating', confidence: 0.6 };
   } else if (stressedCount > unstressedCount * 1.5) {
@@ -367,8 +452,28 @@ const identifyMeter = (stresses) => {
   } else if (unstressedCount > stressedCount * 1.5) {
     return { type: 'stress-light', confidence: 0.5 };
   }
-  
+
   return { type: 'irregular', confidence: 0.3 };
+};
+
+// Identify common meter patterns (Memoized)
+const identifyMeter = (stresses) => {
+  if (!stresses || stresses.length < 2) {
+    return { type: 'insufficient', confidence: 0 };
+  }
+
+  const length = stresses.length;
+
+  // Convert to binary for pattern matching (1 = stressed, 0 = unstressed)
+  const binaryPattern = stresses.map(s => s === '1' ? '1' : '0').join('');
+
+  // Check cache using binary pattern as key
+  const cached = meterCache.get(binaryPattern);
+  if (cached !== undefined) return { ...cached }; // Return copy to prevent mutation
+
+  const result = identifyMeterCore(binaryPattern, length);
+  meterCache.set(binaryPattern, result);
+  return { ...result }; // Return copy to prevent mutation
 };
 
 // Helper function for expected meter lengths

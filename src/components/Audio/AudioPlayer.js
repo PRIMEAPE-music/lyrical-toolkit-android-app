@@ -41,8 +41,10 @@ const AudioPlayer = ({
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [menuPosition, setMenuPosition] = useState('bottom');
   
-  // A-B Loop functionality state
+  // A-B Loop functionality state (setters used by toggleLoopMarkers callback)
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   const [loopStart, setLoopStart] = useState(null);
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   const [loopEnd, setLoopEnd] = useState(null);
   const [showLoopMarkers, setShowLoopMarkers] = useState(false);
   // draggingMarker removed - now handled by WaveSurfer regions
@@ -55,6 +57,11 @@ const AudioPlayer = ({
   const [currentRegion, setCurrentRegion] = useState(null);
   const currentRegionRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Refs for proper cleanup (memory leak prevention)
+  const waveSurferRef = useRef(null);
+  const blobUrlRef = useRef(null);
+  const regionEventHandlerRef = useRef(null);
   
   // Debug re-renders
   useEffect(() => {
@@ -91,9 +98,15 @@ const AudioPlayer = ({
   useEffect(() => {
     if (!audioUrl) return;
 
+    // Track if the effect has been cleaned up (for async operations)
+    let isCancelled = false;
+
     const initializeWaveSurfer = async () => {
       // Wait for next tick to ensure container is mounted
       await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check if effect was cleaned up while waiting
+      if (isCancelled) return;
 
       const containerRef = compact ? waveformRef : waveformRefVertical;
       if (!containerRef.current) {
@@ -103,10 +116,19 @@ const AudioPlayer = ({
 
       console.log('🎵 Initializing WaveSurfer, container found:', !!containerRef.current);
 
-      // Clean up existing instance
-      if (waveSurfer) {
-        waveSurfer.destroy();
+      // Clean up existing instance using ref (ensures we get the current instance)
+      if (waveSurferRef.current) {
+        console.log('🧹 Destroying previous WaveSurfer instance');
+        waveSurferRef.current.destroy();
+        waveSurferRef.current = null;
         setWaveSurfer(null);
+      }
+
+      // Clean up any existing blob URL
+      if (blobUrlRef.current) {
+        console.log('🧹 Revoking previous blob URL');
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
 
       setWaveformLoading(true);
@@ -138,6 +160,7 @@ const AudioPlayer = ({
 
         // Event listeners
         ws.on('ready', () => {
+          if (isCancelled) return;
           const duration = ws.getDuration();
           setDuration(duration);
           setIsLoading(false);
@@ -149,20 +172,32 @@ const AudioPlayer = ({
         });
 
         ws.on('loading', (percent) => {
+          if (isCancelled) return;
           console.log('📊 Loading progress:', percent + '%');
           setWaveformLoading(percent < 100);
         });
 
         // Use timeupdate for current time tracking and loop logic
         ws.on('timeupdate', (time) => {
+          if (isCancelled) return;
           setCurrentTime(time);
         });
 
-        ws.on('play', () => setIsPlaying(true));
-        ws.on('pause', () => setIsPlaying(false));
-        ws.on('finish', () => setIsPlaying(false));
+        ws.on('play', () => {
+          if (isCancelled) return;
+          setIsPlaying(true);
+        });
+        ws.on('pause', () => {
+          if (isCancelled) return;
+          setIsPlaying(false);
+        });
+        ws.on('finish', () => {
+          if (isCancelled) return;
+          setIsPlaying(false);
+        });
 
         ws.on('error', (error) => {
+          if (isCancelled) return;
           setError('Failed to load audio file');
           setIsLoading(false);
           setWaveformLoading(false);
@@ -172,20 +207,22 @@ const AudioPlayer = ({
         // Load the audio - handle IndexedDB URLs and Supabase URLs on mobile
         console.log('🎵 Loading audio URL:', audioUrl);
         let playableUrl = audioUrl;
+        let createdBlobUrl = null;
 
         // If it's an IndexedDB reference, convert to blob URL
         if (audioUrl.startsWith('indexeddb://')) {
           const songId = audioUrl.replace('indexeddb://', '');
           console.log('🎵 Converting IndexedDB URL to blob URL for song:', songId);
           playableUrl = await audioStorageService.getAudioBlobURL(songId);
+          createdBlobUrl = playableUrl;
           console.log('✅ Got blob URL:', playableUrl);
         }
         // On mobile/Android, convert Supabase URLs to blob URLs to avoid CORS issues
         else if (audioUrl.includes('supabase.co')) {
-          const isMobile = window.innerWidth <= 768;
+          const isMobileScreen = window.innerWidth <= 768;
           const isCapacitor = window.Capacitor !== undefined;
 
-          if (isMobile || isCapacitor) {
+          if (isMobileScreen || isCapacitor) {
             console.log('📱 Mobile/Capacitor detected, converting Supabase URL to blob URL');
             console.log('🔍 Original URL:', audioUrl);
             try {
@@ -209,6 +246,7 @@ const AudioPlayer = ({
                 const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
                 console.log('📦 Created blob, size:', blob.size);
                 playableUrl = URL.createObjectURL(blob);
+                createdBlobUrl = playableUrl;
                 console.log('✅ Converted to blob URL via CapacitorHttp');
               } else {
                 // Fallback to regular fetch for mobile web browsers
@@ -229,6 +267,7 @@ const AudioPlayer = ({
                 const blob = await response.blob();
                 console.log('📦 Blob type:', blob.type, 'size:', blob.size);
                 playableUrl = URL.createObjectURL(blob);
+                createdBlobUrl = playableUrl;
                 console.log('✅ Converted to blob URL:', playableUrl.substring(0, 50) + '...');
               }
             } catch (fetchError) {
@@ -241,10 +280,39 @@ const AudioPlayer = ({
           }
         }
 
+        // Check if cancelled before loading
+        if (isCancelled) {
+          // Clean up the blob URL we just created if cancelled
+          if (createdBlobUrl) {
+            URL.revokeObjectURL(createdBlobUrl);
+          }
+          ws.destroy();
+          return;
+        }
+
+        // Store the blob URL in ref for cleanup
+        if (createdBlobUrl) {
+          blobUrlRef.current = createdBlobUrl;
+        }
+
         await ws.load(playableUrl);
+
+        // Check if cancelled after loading
+        if (isCancelled) {
+          ws.destroy();
+          if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+            blobUrlRef.current = null;
+          }
+          return;
+        }
+
+        // Store WaveSurfer instance in both state and ref
+        waveSurferRef.current = ws;
         setWaveSurfer(ws);
 
       } catch (error) {
+        if (isCancelled) return;
         console.error('❌ Failed to initialize WaveSurfer:', error);
         setError('Failed to initialize audio player');
         setIsLoading(false);
@@ -254,14 +322,37 @@ const AudioPlayer = ({
 
     initializeWaveSurfer();
 
+    // Cleanup function - runs on unmount or when dependencies change
     return () => {
-      if (waveSurfer) {
-        // Only destroy on cleanup, don't pause
-        // This allows audio to continue when component unmounts (tab switching)
-        waveSurfer.destroy();
+      console.log('🧹 AudioPlayer cleanup triggered');
+      isCancelled = true;
+
+      // Clean up region event handler first
+      if (currentRegionRef.current && regionEventHandlerRef.current) {
+        try {
+          currentRegionRef.current.un('update-end', regionEventHandlerRef.current);
+        } catch (e) {
+          // Region may already be destroyed
+        }
+        regionEventHandlerRef.current = null;
+      }
+
+      // Destroy WaveSurfer instance using ref (ensures we get the current instance)
+      if (waveSurferRef.current) {
+        console.log('🧹 Destroying WaveSurfer instance');
+        waveSurferRef.current.destroy();
+        waveSurferRef.current = null;
+      }
+
+      // Revoke blob URL to prevent memory leak
+      if (blobUrlRef.current) {
+        console.log('🧹 Revoking blob URL on cleanup');
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
-  }, [audioUrl, compact, darkMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUrl, compact]); // Removed darkMode - theme changes handled in separate useEffect below
 
   // Update WaveSurfer colors when theme changes
   useEffect(() => {
@@ -420,11 +511,22 @@ const AudioPlayer = ({
   // A-B Loop functionality with WaveSurfer regions
   const toggleLoopMarkers = useCallback(() => {
     if (!waveSurfer || !regionsPlugin) return;
-    
+
     if (showLoopMarkers) {
       // Hide markers and disable loop functionality
       setShowLoopMarkers(false);
       setMarkerTooltip(null);
+
+      // Clean up region event handler before removing region
+      if (currentRegion && regionEventHandlerRef.current) {
+        try {
+          currentRegion.un('update-end', regionEventHandlerRef.current);
+        } catch (e) {
+          // Region may already be destroyed
+        }
+        regionEventHandlerRef.current = null;
+      }
+
       if (currentRegion) {
         currentRegion.remove();
         setCurrentRegion(null);
@@ -440,7 +542,7 @@ const AudioPlayer = ({
         const threeQuarterDuration = duration * 0.75;
         setLoopStart(quarterDuration);
         setLoopEnd(threeQuarterDuration);
-        
+
         // Create region
         const region = regionsPlugin.addRegion({
           start: quarterDuration,
@@ -452,14 +554,16 @@ const AudioPlayer = ({
         });
         setCurrentRegion(region);
         currentRegionRef.current = region;
-        
-        // Handle region updates
-        region.on('update-end', () => {
+
+        // Handle region updates - store handler reference for cleanup
+        const handleRegionUpdate = () => {
           setLoopStart(region.start);
           setLoopEnd(region.end);
           currentRegionRef.current = region;
           console.log('🔄 Region updated:', { start: region.start, end: region.end });
-        });
+        };
+        regionEventHandlerRef.current = handleRegionUpdate;
+        region.on('update-end', handleRegionUpdate);
       }
     }
   }, [waveSurfer, regionsPlugin, showLoopMarkers, duration, darkMode, currentRegion]);

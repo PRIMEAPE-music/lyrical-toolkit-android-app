@@ -1,6 +1,111 @@
 import { getGeminiApiKey, isApiKeyConfigured } from './settingsService';
 
+// ============================================================================
+// LRU Cache with TTL - Prevents unbounded memory growth
+// ============================================================================
+class LRUCache {
+  constructor(maxSize = 50, ttlMs = 30 * 60 * 1000) {
+    this.maxSize = maxSize;           // Maximum number of entries
+    this.ttlMs = ttlMs;               // Time-to-live in milliseconds (default: 30 minutes)
+    this.cache = new Map();           // Map maintains insertion order for LRU
+  }
+
+  // Check if a key exists and is not expired
+  has(key) {
+    if (!this.cache.has(key)) {
+      return false;
+    }
+
+    const entry = this.cache.get(key);
+    if (this._isExpired(entry)) {
+      this.cache.delete(key);
+      return false;
+    }
+
+    return true;
+  }
+
+  // Get a value, refreshing its position (most recently used)
+  get(key) {
+    if (!this.has(key)) {
+      return undefined;
+    }
+
+    const entry = this.cache.get(key);
+
+    // Move to end (most recently used) by deleting and re-adding
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+
+    return entry.value;
+  }
+
+  // Set a value, evicting oldest if at capacity
+  set(key, value) {
+    // If key exists, delete it first (will be re-added at end)
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+
+    // Evict oldest entries if at capacity
+    while (this.cache.size >= this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+      console.log(`LRU Cache: Evicted oldest entry`);
+    }
+
+    // Add new entry with timestamp
+    this.cache.set(key, {
+      value,
+      timestamp: Date.now()
+    });
+  }
+
+  // Delete a specific key
+  delete(key) {
+    return this.cache.delete(key);
+  }
+
+  // Clear all entries
+  clear() {
+    this.cache.clear();
+  }
+
+  // Get current cache size
+  get size() {
+    // Clean expired entries first
+    this._cleanExpired();
+    return this.cache.size;
+  }
+
+  // Check if an entry is expired
+  _isExpired(entry) {
+    return Date.now() - entry.timestamp > this.ttlMs;
+  }
+
+  // Remove all expired entries
+  _cleanExpired() {
+    for (const [key, entry] of this.cache) {
+      if (this._isExpired(entry)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  // Get cache stats for debugging
+  getStats() {
+    this._cleanExpired();
+    return {
+      size: this.cache.size,
+      maxSize: this.maxSize,
+      ttlMinutes: this.ttlMs / 60000
+    };
+  }
+}
+
+// ============================================================================
 // Prompts for analysis - Enhanced for maximum depth
+// ============================================================================
 
 // MULTI-PASS PROMPTS for deeper coherence analysis
 
@@ -588,7 +693,9 @@ Return JSON with this structure:
 class GeminiService {
   constructor() {
     this.lastApiCall = 0;
-    this.cache = new Map();
+    // LRU cache: max 50 entries, 30-minute TTL
+    // Prevents unbounded memory growth from cached API responses
+    this.cache = new LRUCache(50, 30 * 60 * 1000);
     this.rateLimitMs = 2000; // 2 seconds between calls - faster UX, rate limit errors handled gracefully
   }
 
@@ -1039,6 +1146,11 @@ class GeminiService {
   // Clear cache
   clearCache() {
     this.cache.clear();
+  }
+
+  // Get cache statistics for debugging
+  getCacheStats() {
+    return this.cache.getStats();
   }
 }
 
