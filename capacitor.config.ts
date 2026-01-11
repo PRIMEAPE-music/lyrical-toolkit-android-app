@@ -11,7 +11,11 @@ const config: CapacitorConfig = {
     cleartext: false
   },
   plugins: {
-    // Configure plugins here as needed
+    // Enable native HTTP to bypass CORS issues on mobile
+    // This patches global fetch() to use native HTTP requests
+    CapacitorHttp: {
+      enabled: true
+    }
   }
 };
 

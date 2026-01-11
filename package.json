@@ -40,7 +40,9 @@
     "server": "node server/index.js",
     "build": "cross-env CI=false craco build",
     "test": "craco test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "lint": "eslint src/",
+    "prepare": "node .claude/scripts/setup-hooks.js"
   },
   "eslintConfig": {
     "extends": [

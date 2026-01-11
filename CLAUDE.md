@@ -116,3 +116,42 @@ Required environment variables:
 - Rate limiting implemented for AI API calls
 - Caching system for AI analysis results
 - Authentication is optional - app works with/without login
+
+---
+
+## Claude Code Integration
+
+### Custom Commands Available
+
+| Command | Description |
+|---------|-------------|
+| `/build-android` | Build Android APK (debug or release) |
+| `/run-android` | Run on device or emulator |
+
+### Capacitor Configuration
+
+- App ID: `com.lyricaltoolkit.app`
+- Android Scheme: `https` (for API connections)
+- CapacitorHttp: Enabled (bypasses CORS on mobile)
+
+### Building for Android
+
+1. Build web: `npm run build`
+2. Sync: `npx cap sync android`
+3. Run: `npx cap run android`
+
+Or open in Android Studio: `npx cap open android`
+
+### Shared Code (Synced from Web)
+
+These directories come from the web repository:
+- `src/utils/` - Utility functions
+- `src/services/` - API services
+- `src/hooks/` - Custom React hooks
+- `src/data/` - Static data files
+
+Use `/sync` from the web repo to pull changes from mobile.
+
+### Related Repository
+
+Web app: `../lyrical-toolkit` (React + Netlify)

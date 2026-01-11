@@ -1,6 +1,74 @@
 // Simplified Audio Upload Function with Enhanced Error Handling
 const { createClient } = require('@supabase/supabase-js');
 
+// Parse JSON/base64 format sent by CapacitorHttp
+// CapacitorHttp converts FormData to: {"data":[{"key":"file","value":"base64..."},{"key":"filename","value":"name.mp3"}]}
+const parseCapacitorJson = (event) => {
+  console.log('📱 Parsing CapacitorHttp JSON format...');
+
+  try {
+    let body = event.body;
+
+    // Decode base64 if needed
+    if (event.isBase64Encoded) {
+      body = Buffer.from(body, 'base64').toString('utf-8');
+    }
+
+    const jsonData = JSON.parse(body);
+    console.log('📋 JSON data keys:', Object.keys(jsonData));
+
+    // CapacitorHttp sends data as an array of {key, value} objects
+    const dataArray = jsonData.data || jsonData;
+
+    if (!Array.isArray(dataArray)) {
+      throw new Error('Expected data array from CapacitorHttp');
+    }
+
+    const result = {};
+
+    for (const item of dataArray) {
+      const key = item.key;
+      const value = item.value;
+
+      console.log(`📋 Processing field: ${key} (${typeof value}, length: ${value ? value.length : 0})`);
+
+      if (key === 'file') {
+        // The file is base64 encoded - decode it
+        // CapacitorHttp may include a data URI prefix, strip it if present
+        let base64Data = value;
+        if (base64Data.includes(',')) {
+          base64Data = base64Data.split(',')[1];
+        }
+
+        const content = Buffer.from(base64Data, 'base64');
+        console.log(`📄 Decoded file: ${content.length} bytes`);
+
+        result.file = {
+          content: content,
+          contentType: item.type || item.contentType || 'audio/mpeg',
+          filename: item.name || 'audio.mp3'
+        };
+      } else {
+        result[key] = value;
+      }
+    }
+
+    // Use filename from separate field if available
+    if (result.filename && result.file) {
+      result.file.filename = result.filename;
+    }
+
+    console.log('✅ CapacitorHttp JSON parsing successful');
+    console.log('📋 Parsed fields:', Object.keys(result));
+
+    return result;
+
+  } catch (error) {
+    console.error('❌ CapacitorHttp JSON parsing failed:', error);
+    throw new Error('Failed to parse CapacitorHttp JSON: ' + error.message);
+  }
+};
+
 // Reliable multipart parser using busboy
 const parseMultipart = async (event) => {
   return new Promise((resolve, reject) => {
@@ -285,10 +353,11 @@ exports.handler = async (event, context) => {
     
     // Step 4: Parse Request
     console.log('🔍 === STEP 4: PARSE REQUEST ===');
-    console.log('Content-Type:', event.headers['content-type'] || event.headers['Content-Type']);
+    const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
+    console.log('Content-Type:', contentType);
     console.log('Body length:', event.body ? event.body.length : 0);
     console.log('Is base64:', event.isBase64Encoded);
-    
+
     // Memory check before parsing
     if (process.memoryUsage) {
       const memoryBefore = process.memoryUsage();
@@ -297,21 +366,58 @@ exports.handler = async (event, context) => {
         heapUsed: Math.round(memoryBefore.heapUsed / 1024 / 1024) + 'MB',
         heapTotal: Math.round(memoryBefore.heapTotal / 1024 / 1024) + 'MB'
       });
-      
+
       // Force garbage collection if available
       if (global.gc) {
         console.log('🧹 Running garbage collection before parsing...');
         global.gc();
       }
     }
-    
-    console.log('⚡ Starting multipart parsing...');
+
     let result;
     try {
-      result = await parseMultipart(event);
-      console.log('✅ Multipart parsing successful');
+      // Detect if this is CapacitorHttp JSON format or standard multipart
+      // CapacitorHttp may send with various content types, so we need robust detection
+      let isJsonRequest = contentType.includes('application/json') ||
+                          contentType.includes('text/plain');
+
+      // Also check if body looks like JSON (not multipart)
+      if (!isJsonRequest && !contentType.includes('multipart')) {
+        let bodyToCheck = event.body;
+
+        // If base64 encoded, decode first to check
+        if (event.isBase64Encoded && bodyToCheck) {
+          try {
+            bodyToCheck = Buffer.from(bodyToCheck, 'base64').toString('utf-8');
+          } catch (e) {
+            console.log('⚠️ Could not decode body for JSON detection');
+          }
+        }
+
+        // Check if it starts with { (JSON object)
+        if (bodyToCheck && (bodyToCheck.startsWith('{') || bodyToCheck.startsWith('['))) {
+          isJsonRequest = true;
+          console.log('📱 Detected JSON format from body content');
+        }
+      }
+
+      console.log('📋 Request format detection:', {
+        contentType: contentType,
+        isBase64Encoded: event.isBase64Encoded,
+        isJsonRequest: isJsonRequest
+      });
+
+      if (isJsonRequest) {
+        console.log('📱 Parsing CapacitorHttp JSON format');
+        result = parseCapacitorJson(event);
+      } else {
+        console.log('⚡ Starting multipart parsing...');
+        result = await parseMultipart(event);
+        console.log('✅ Multipart parsing successful');
+      }
+
       console.log('📋 Parsed fields:', Object.keys(result));
-      
+
       // Memory check after parsing
       if (process.memoryUsage) {
         const memoryAfter = process.memoryUsage();
@@ -325,9 +431,9 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           error: 'Failed to parse upload request',
-          details: error.message 
+          details: error.message
         })
       };
     }

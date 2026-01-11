@@ -48,3 +48,4 @@ ios/App/App.xcworkspace/xcuserdata
 *.swp
 *.swo
 *~
+.claude/settings.local.json

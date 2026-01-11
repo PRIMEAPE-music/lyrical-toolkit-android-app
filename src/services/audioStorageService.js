@@ -6,7 +6,6 @@
  */
 
 import * as audioIndexedDB from '../utils/audioIndexedDB';
-import { API_BASE_URL } from '../config/api';
 
 // Audio file validation constants
 export const AUDIO_CONFIG = {
@@ -84,25 +83,102 @@ export const getAudioDuration = (file) => {
   });
 };
 
-// Upload audio file to Supabase Storage (for database/cloud mode)
-const uploadToSupabase = async (file, songId, userId = 'anonymous') => {
-  console.log('☁️ Uploading audio file to Supabase Storage:', file.name);
+// Detect if running in Capacitor environment
+const isCapacitorEnvironment = () => {
+  return typeof window !== 'undefined' && window.Capacitor !== undefined;
+};
 
+// Upload using XMLHttpRequest (for Capacitor)
+// XMLHttpRequest is used instead of fetch because CapacitorHttp patches fetch
+// and converts FormData to JSON, which breaks multipart/form-data uploads
+const uploadWithXHR = (uploadUrl, formData, file) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      console.log('📤 Sending XMLHttpRequest to:', uploadUrl);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', uploadUrl, true);
+
+      xhr.onload = async () => {
+        console.log('📥 Response status:', xhr.status);
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const result = JSON.parse(xhr.responseText);
+            console.log('✅ Audio uploaded to Supabase:', result);
+
+            // Get duration locally since Supabase doesn't calculate it
+            const duration = await getAudioDuration(file);
+
+            resolve({
+              audioUrl: result.publicUrl,
+              filename: file.name,
+              size: file.size,
+              duration
+            });
+          } catch (e) {
+            console.error('❌ Failed to parse response:', xhr.responseText);
+            reject(new Error('Failed to parse server response'));
+          }
+        } else {
+          console.error('❌ Response error:', xhr.responseText);
+          let errorMessage = `Upload failed with status ${xhr.status}`;
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            errorMessage = errorData.error || errorData.details || errorMessage;
+          } catch (e) {
+            errorMessage = xhr.responseText || errorMessage;
+          }
+          reject(new Error(errorMessage));
+        }
+      };
+
+      xhr.onerror = () => {
+        console.error('❌ XMLHttpRequest error');
+        reject(new Error('Network error: Could not reach upload server. Please check your internet connection.'));
+      };
+
+      xhr.ontimeout = () => {
+        console.error('❌ XMLHttpRequest timeout');
+        reject(new Error('Upload timed out. Please try again.'));
+      };
+
+      // Set timeout to 60 seconds for large files
+      xhr.timeout = 60000;
+
+      // Send the request
+      xhr.send(formData);
+
+    } catch (error) {
+      console.error('❌ XHR upload error:', error);
+      reject(error);
+    }
+  });
+};
+
+// Upload using fetch (for standard web environments)
+const uploadWithFetch = async (uploadUrl, formData, file) => {
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('filename', file.name);
-    formData.append('userId', userId);
-    formData.append('songId', String(songId));
+    console.log('📤 Sending fetch request to:', uploadUrl);
 
-    const response = await fetch(`${API_BASE_URL}/upload-audio`, {
+    const response = await fetch(uploadUrl, {
       method: 'POST',
       body: formData
     });
 
+    console.log('📥 Response status:', response.status);
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.details || `Upload failed with status ${response.status}`);
+      const errorText = await response.text();
+      console.error('❌ Response error:', errorText);
+      let errorMessage = `Upload failed with status ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorData.details || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
@@ -118,13 +194,48 @@ const uploadToSupabase = async (file, songId, userId = 'anonymous') => {
       duration
     };
   } catch (error) {
+    console.error('❌ Fetch upload error:', error);
+    throw error;
+  }
+};
+
+// Upload audio file to Supabase Storage
+// Automatically detects environment and uses appropriate method:
+// - Capacitor (mobile): XMLHttpRequest (bypasses CapacitorHttp fetch patching)
+// - Web browser: Standard fetch()
+const uploadToSupabase = async (file, songId, userId = 'anonymous') => {
+  const NETLIFY_URL = 'https://lyrical-toolkit.netlify.app';
+  const uploadUrl = `${NETLIFY_URL}/.netlify/functions/upload-audio`;
+
+  const isCapacitor = isCapacitorEnvironment();
+
+  console.log('☁️ Uploading audio file to Supabase Storage:', file.name);
+  console.log('🌐 Upload URL:', uploadUrl);
+  console.log('📊 File size:', file.size, 'bytes');
+  console.log('📱 Environment:', isCapacitor ? 'Capacitor (mobile)' : 'Web browser');
+  console.log('🔧 Upload method:', isCapacitor ? 'XMLHttpRequest' : 'fetch()');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('filename', file.name);
+    formData.append('userId', userId);
+    formData.append('songId', String(songId));
+
+    // Use appropriate upload method based on environment
+    if (isCapacitor) {
+      return await uploadWithXHR(uploadUrl, formData, file);
+    } else {
+      return await uploadWithFetch(uploadUrl, formData, file);
+    }
+  } catch (error) {
     console.error('❌ Supabase upload error:', error);
     throw error;
   }
 };
 
 // Upload audio file to IndexedDB (for local mode)
-const uploadToIndexedDB = async (file, songId, userId = 'anonymous') => {
+const uploadToIndexedDB = async (file, songId) => {
   console.log('💾 Uploading audio file to IndexedDB:', file.name);
 
   // Get duration
@@ -202,7 +313,7 @@ export const getAudioBlobURL = async (songId) => {
 };
 
 // Download audio file
-export const downloadAudioFile = async (url, songId) => {
+export const downloadAudioFile = async (url) => {
   console.log('📥 Downloading audio file');
 
   try {
@@ -316,7 +427,7 @@ export const formatDuration = (seconds) => {
 };
 
 // Default export for backward compatibility
-export default {
+const audioStorageService = {
   AUDIO_CONFIG,
   validateAudioFile,
   getAudioDuration,
@@ -329,3 +440,5 @@ export default {
   formatFileSize,
   formatDuration
 };
+
+export default audioStorageService;
