@@ -281,6 +281,8 @@ const LyricsSearchAppContent = () => {
         // Allow auto-save again after a brief delay
         setTimeout(() => {
           isReloadingRef.current = false;
+          // Also release the storage switching lock after songs are loaded
+          isSwitchingStorageRef.current = false;
         }, 500);
       }
     };
@@ -596,19 +598,13 @@ const LyricsSearchAppContent = () => {
       return;
     }
 
-    try {
-      isSwitchingStorageRef.current = true;
-      console.log('🔄 Switching storage type from', storageType, 'to', newStorageType);
-      setStorageType(newStorageType);
+    // Lock switching until songs are loaded (released in useEffect)
+    isSwitchingStorageRef.current = true;
+    console.log('🔄 Switching storage type from', storageType, 'to', newStorageType);
+    setStorageType(newStorageType);
 
-      // Songs will automatically reload via useEffect dependency on storageType
-    } finally {
-      // Add a longer delay before allowing another switch and auto-save
-      // This prevents database songs from being copied to localStorage
-      setTimeout(() => {
-        isSwitchingStorageRef.current = false;
-      }, 3000);
-    }
+    // Songs will automatically reload via useEffect dependency on storageType
+    // Lock will be released once songs are loaded (see useEffect at line 270)
   };
 
   // Transfer song between storage types
@@ -633,21 +629,154 @@ const LyricsSearchAppContent = () => {
       // Save to target storage
       if (targetStorage === 'database') {
         const songsService = await import('./services/songsService');
-        await songsService.createSong(null, {
+
+        // Handle audio transfer
+        let audioData = null;
+        if (song.audioFileUrl) {
+          // Check if it's already a Supabase URL - if so, just reuse it
+          if (song.audioFileUrl.startsWith('https://') && song.audioFileUrl.includes('supabase.co')) {
+            console.log('♻️ Song already has database audio URL, reusing it');
+            console.log('   Audio URL:', song.audioFileUrl);
+            audioData = {
+              audioFileUrl: song.audioFileUrl,
+              audioFileName: song.audioFileName,
+              audioFileSize: song.audioFileSize,
+              audioDuration: song.audioDuration
+            };
+          }
+          // If it's an IndexedDB URL, upload to Supabase
+          else if (song.audioFileUrl.startsWith('indexeddb://')) {
+            try {
+              console.log('📤 Song has local audio, uploading to database storage...');
+              console.log('   Song ID:', song.id);
+              console.log('   Audio URL:', song.audioFileUrl);
+
+              // Extract the IndexedDB ID from the audioFileUrl
+              const audioId = song.audioFileUrl.replace('indexeddb://', '');
+              console.log('   Audio ID:', audioId);
+
+              const audioIndexedDB = await import('./utils/audioIndexedDB');
+              const audioFile = await audioIndexedDB.getAudioFile(audioId);
+              console.log('   Retrieved from IndexedDB:', audioFile ? 'Yes' : 'No');
+
+              if (audioFile) {
+                console.log('   Audio file type:', audioFile.type);
+                console.log('   Audio filename:', audioFile.filename);
+
+                // Create a File object from the stored audio data
+                const data = audioFile.arrayBuffer || audioFile.file;
+                console.log('   Audio data size:', data ? data.byteLength || data.size : 'No data');
+
+                const blob = new Blob([data], { type: audioFile.type || 'audio/mpeg' });
+                const file = new File([blob], audioFile.filename || song.audioFileName || 'audio.mp3', {
+                  type: audioFile.type || 'audio/mpeg'
+                });
+                console.log('   Created File object:', file.name, file.size, 'bytes');
+
+                // Upload to Supabase using the audio storage service
+                console.log('   Calling uploadAudioFile...');
+                const result = await audioStorageService.uploadAudioFile(
+                  file,
+                  song.id,
+                  user?.userId || 'anonymous',
+                  'database'  // Target database storage
+                );
+                console.log('   Upload result:', result);
+
+                audioData = {
+                  audioFileUrl: result.audioUrl,
+                  audioFileName: result.filename,
+                  audioFileSize: result.size,
+                  audioDuration: result.duration
+                };
+
+                console.log('✅ Audio file uploaded to database:', audioData);
+              } else {
+                console.warn('⚠️ No audio file found in IndexedDB for song:', song.id);
+              }
+            } catch (audioError) {
+              console.error('❌ Could not transfer audio file:', audioError);
+              console.error('   Error stack:', audioError.stack);
+              // Continue without audio - don't fail the whole transfer
+            }
+          }
+        } else {
+          console.log('ℹ️ Song has no audio');
+        }
+
+        const songDataToSave = {
           title: song.title,
           content: song.lyrics || song.content,
-          filename: song.filename
-        });
+          filename: song.filename,
+          ...(audioData || {
+            audioFileUrl: song.audioFileUrl,
+            audioFileName: song.audioFileName,
+            audioFileSize: song.audioFileSize,
+            audioDuration: song.audioDuration
+          })
+        };
+        console.log('💾 Creating song in database with data:', JSON.stringify(songDataToSave, null, 2));
+
+        await songsService.createSong(null, songDataToSave);
         console.log('✅ Song saved to database');
       } else {
         // Save to local storage
+        console.log('📥 Transferring song to local storage...');
+        console.log('   Original song data:', JSON.stringify(song, null, 2));
+
         const songStorageModule = await import('./utils/songStorage');
         const currentLocalSongs = await songStorageModule.loadUserSongs(false);
+
+        const newSongId = Date.now() + Math.random(); // Generate new ID for local storage
+
+        // If song has database audio (Supabase URL), download it to IndexedDB
+        let localAudioData = {};
+        if (song.audioFileUrl && !song.audioFileUrl.startsWith('indexeddb://')) {
+          try {
+            console.log('📥 Downloading audio file from database to local storage...');
+            console.log('   Audio URL:', song.audioFileUrl);
+
+            // Download the audio file
+            const response = await fetch(song.audioFileUrl);
+            if (!response.ok) throw new Error(`Failed to download audio: ${response.statusText}`);
+
+            const audioBlob = await response.blob();
+            console.log('   Downloaded blob size:', audioBlob.size, 'bytes');
+
+            // Create a File object
+            const audioFile = new File(
+              [audioBlob],
+              song.audioFileName || 'audio.mp3',
+              { type: audioBlob.type || 'audio/mpeg' }
+            );
+
+            // Store in IndexedDB
+            const audioIndexedDB = await import('./utils/audioIndexedDB');
+            await audioIndexedDB.storeAudioFile(newSongId, audioFile);
+
+            localAudioData = {
+              audioFileUrl: `indexeddb://${newSongId}`,
+              audioFileName: song.audioFileName,
+              audioFileSize: song.audioFileSize,
+              audioDuration: song.audioDuration
+            };
+
+            console.log('✅ Audio file downloaded and stored in IndexedDB');
+          } catch (audioError) {
+            console.error('❌ Could not download audio file:', audioError);
+            console.error('   Error stack:', audioError.stack);
+            // Continue without audio - don't fail the whole transfer
+          }
+        }
+
         const newSong = {
           ...song,
-          id: Date.now() + Math.random(), // Generate new ID for local storage
-          dateAdded: new Date().toISOString()
+          id: newSongId,
+          dateAdded: new Date().toISOString(),
+          ...localAudioData
         };
+
+        console.log('💾 New song object to save:', JSON.stringify(newSong, null, 2));
         await saveUserSongs([...currentLocalSongs, newSong]);
         console.log('✅ Song saved to localStorage');
       }
