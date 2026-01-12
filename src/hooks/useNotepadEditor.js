@@ -156,7 +156,7 @@ export const useNotepadEditor = ({
   ]);
 
   /**
-   * Save changes to an existing song
+   * Save changes to an existing song (manual save - persists to storage)
    */
   const handleSaveChanges = useCallback(async () => {
     if (!notepadState.currentEditingSongId || !notepadState.content.trim()) return;
@@ -165,30 +165,33 @@ export const useNotepadEditor = ({
       const sanitizedTitle = DOMPurify.sanitize(notepadState.title);
       const sanitizedContent = DOMPurify.sanitize(notepadState.content);
       const originalSong = songs.find(song => song.id === notepadState.currentEditingSongId);
+      const finalTitle = sanitizedTitle || (originalSong ? originalSong.title : '');
+
+      // Build updated song
+      const updatedSong = {
+        ...originalSong,
+        title: finalTitle,
+        lyrics: sanitizedContent,
+        content: sanitizedContent,
+        wordCount: sanitizedContent.split(/\s+/).filter(word => word.length > 0).length,
+        dateModified: new Date().toISOString()
+      };
 
       // Update local state
-      setSongs(prev => prev.map(song => {
-        if (song.id === notepadState.currentEditingSongId) {
-          const finalTitle = sanitizedTitle || song.title;
-          return {
-            ...song,
-            title: finalTitle,
-            lyrics: sanitizedContent,
-            wordCount: sanitizedContent.split(/\s+/).filter(word => word.length > 0).length,
-            dateModified: new Date().toISOString()
-          };
-        }
-        return song;
-      }));
+      const updatedSongs = songs.map(song =>
+        song.id === notepadState.currentEditingSongId ? updatedSong : song
+      );
+      setSongs(updatedSongs);
 
-      const finalTitle = sanitizedTitle || (originalSong ? originalSong.title : '');
+      // Persist to storage (both local and database modes)
+      await saveSongsToStorage(updatedSongs);
 
       // Update notepad and original content with sanitized values
       notepadState.updateTitle(finalTitle);
       notepadState.updateContent(sanitizedContent);
       setOriginalSongContent(sanitizedContent);
 
-      console.log('Song saved successfully to local state');
+      console.log('Song saved successfully');
       alert('Song saved successfully!');
     } catch (error) {
       console.error('Failed to save changes:', error);
@@ -201,7 +204,8 @@ export const useNotepadEditor = ({
     notepadState.updateTitle,
     notepadState.updateContent,
     songs,
-    setSongs
+    setSongs,
+    saveSongsToStorage
   ]);
 
   /**
@@ -342,6 +346,8 @@ export const useNotepadEditor = ({
 
   /**
    * Save current tab content (for auto-save)
+   * For database mode: only updates local state (no server sync) to prevent conflicts
+   * For local mode: saves to localStorage
    */
   const handleSaveCurrentTab = useCallback(async () => {
     const activeTab = getActiveTab();
@@ -374,7 +380,10 @@ export const useNotepadEditor = ({
         return s;
       });
       setSongs(updatedSongs);
-      await saveSongsToStorage(updatedSongs);
+      // Only persist to storage for local mode - database requires manual save
+      if (storageType !== 'database') {
+        await saveSongsToStorage(updatedSongs);
+      }
     } else {
       // Saving main song - calculate word/line counts locally for real-time UI updates
       const words = currentContent.split(/\s+/).filter(word => word.trim()).length;
@@ -393,12 +402,15 @@ export const useNotepadEditor = ({
           : s
       );
       setSongs(updatedSongs);
-      await saveSongsToStorage(updatedSongs);
+      // Only persist to storage for local mode - database requires manual save
+      if (storageType !== 'database') {
+        await saveSongsToStorage(updatedSongs);
+      }
       setOriginalSongContent(currentContent);
     }
 
     return true;
-  }, [getActiveTab, songs, notepadState.content, notepadState.title, setSongs, saveSongsToStorage]);
+  }, [getActiveTab, songs, notepadState.content, notepadState.title, setSongs, saveSongsToStorage, storageType]);
 
   // Assign the actual implementation to the ref for use by other handlers
   handleSaveCurrentTabRef.current = handleSaveCurrentTab;
@@ -612,16 +624,20 @@ export const useNotepadEditor = ({
   // AUTO-SAVE EFFECT
   // ====================================
 
-  // Auto-save logic - runs every 5 seconds
+  // Auto-save logic - runs every 5 seconds (LOCAL STORAGE ONLY)
+  // Database songs require manual save to prevent conflicts when editing on multiple devices
   useEffect(() => {
     if (openTabs.length === 0) return;
+
+    // Skip auto-save for database storage to prevent overwriting changes from other devices
+    if (storageType === 'database') return;
 
     const interval = setInterval(() => {
       handleSaveCurrentTab();
     }, 5000); // 5 seconds
 
     return () => clearInterval(interval);
-  }, [openTabs, handleSaveCurrentTab]);
+  }, [openTabs, handleSaveCurrentTab, storageType]);
 
   // ====================================
   // RETURN VALUES
