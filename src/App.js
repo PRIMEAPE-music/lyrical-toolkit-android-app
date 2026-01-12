@@ -37,7 +37,7 @@ import DictionaryTab from './components/Tabs/DictionaryTab';
 import SynonymsTab from './components/Tabs/SynonymsTab';
 import RhymesTab from './components/Tabs/RhymesTab';
 import AnalysisTab from './components/Tabs/AnalysisTab';
-import AISettings from './components/Settings/AISettings';
+import Settings from './components/Settings/Settings';
 import UploadTab from './components/Tabs/UploadTab';
 import StatsTab from './components/Tabs/StatsTab';
 import FloatingNotepad from './components/Notepad/FloatingNotepad';
@@ -675,7 +675,15 @@ const LyricsSearchAppContent = () => {
             )}
 
             {activeTab === 'settings' && (
-              <AISettings darkMode={darkMode} />
+              <Settings
+                darkMode={darkMode}
+                onClose={() => setActiveTab('upload')}
+                user={user}
+                isAuthenticated={isAuthenticated}
+                storageType={storageType}
+                onStorageTypeChange={handleStorageTypeChange}
+                onLogout={logout}
+              />
             )}
 
             <div style={{ display: activeTab === 'upload' ? 'block' : 'none' }}>
