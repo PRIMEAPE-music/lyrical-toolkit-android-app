@@ -81,10 +81,17 @@ const AnalysisTab = ({
       let result;
       if (useMultiPass) {
         // Use multi-pass analysis with progress callback
+        // Wrap callback in try-catch to prevent unhandled errors
         result = await geminiService.analyzeLyricalCoherenceMultiPass(
           song.lyrics,
           song.title,
-          (progress) => setCoherenceProgress(progress)
+          (progress) => {
+            try {
+              setCoherenceProgress(progress);
+            } catch (callbackError) {
+              console.error('Progress callback error:', callbackError);
+            }
+          }
         );
       } else {
         // Use single-pass analysis
@@ -95,7 +102,7 @@ const AnalysisTab = ({
       console.error('Error in coherence analysis:', error);
       setCoherenceResults({
         success: false,
-        error: error.message
+        error: error.message || 'An unexpected error occurred during analysis'
       });
     }
 

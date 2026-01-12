@@ -394,19 +394,41 @@ Return JSON:
 }
 
 function createCoherenceFinalSynthesis(lyrics, songTitle, pass1Data, pass2Data, pass3Data) {
+  // Extract only the essential summary data to avoid circular reference issues
+  // and reduce prompt size. The full objects may contain circular refs that crash JSON.stringify
+  const safePass1 = {
+    pass1Summary: pass1Data?.pass1Summary || 'Narrative/theme analysis completed.',
+    narrativeArchitecture: pass1Data?.narrativeArchitecture,
+    thematicAnalysis: pass1Data?.thematicAnalysis,
+    emotionalJourney: pass1Data?.emotionalJourney
+  };
+  const safePass2 = {
+    pass2Summary: pass2Data?.pass2Summary || 'Reference analysis completed.',
+    references: pass2Data?.references,
+    intertextuality: pass2Data?.intertextuality,
+    culturalContext: pass2Data?.culturalContext
+  };
+  const safePass3 = {
+    pass3Summary: pass3Data?.pass3Summary || 'Craft analysis completed.',
+    imagerySymbolism: pass3Data?.imagerySymbolism,
+    soundCraft: pass3Data?.soundCraft,
+    literaryTechniques: pass3Data?.literaryTechniques,
+    craftVerdict: pass3Data?.craftVerdict
+  };
+
   return `You are a senior literary critic writing for a prestigious publication. Synthesize all analysis passes into a FINAL COMPREHENSIVE ASSESSMENT of "${songTitle}".
 
 LYRICS:
 ${lyrics}
 
 PASS 1 DATA (Narrative/Theme/Emotion):
-${JSON.stringify(pass1Data, null, 2)}
+${JSON.stringify(safePass1, null, 2)}
 
 PASS 2 DATA (References/Allusions):
-${JSON.stringify(pass2Data, null, 2)}
+${JSON.stringify(safePass2, null, 2)}
 
 PASS 3 DATA (Craft/Technique):
-${JSON.stringify(pass3Data, null, 2)}
+${JSON.stringify(safePass3, null, 2)}
 
 Create a final synthesis that:
 1. Weighs all evidence from all passes
