@@ -11,10 +11,61 @@ export const saveUserSongs = async (songs) => {
   try {
     const userSongs = songs.filter(song => !song.isExample);
 
-    // Store songs in localStorage
-    localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(userSongs));
+    // CRITICAL: Validate songs before saving to prevent data corruption
+    // A song is valid if it has:
+    // 1. An ID
+    // 2. A title (not empty)
+    // 3. Either content OR audio (songs with just audio are valid)
+    const validSongs = userSongs.filter(song => {
+      const hasTitle = song.title && song.title.trim().length > 0;
+      const hasContent = (song.lyrics && song.lyrics.trim().length > 0) ||
+                        (song.content && song.content.trim().length > 0);
+      const hasAudio = song.audioFileUrl && song.audioFileUrl.trim().length > 0;
+      const hasId = song.id;
 
-    console.log('✅ Saved', userSongs.length, 'songs to localStorage');
+      // Song must have ID and title
+      if (!hasId) {
+        console.warn('⚠️ Skipping song without ID during save:', {
+          id: song.id,
+          title: song.title || '(empty)',
+          hasContent: hasContent,
+          hasAudio: hasAudio
+        });
+        return false;
+      }
+
+      if (!hasTitle) {
+        console.warn('⚠️ Skipping song without title during save:', {
+          id: song.id,
+          title: song.title || '(empty)',
+          hasContent: hasContent,
+          hasAudio: hasAudio
+        });
+        return false;
+      }
+
+      // Song must have EITHER content OR audio (or both)
+      if (!hasContent && !hasAudio) {
+        console.warn('⚠️ Skipping song without content or audio during save:', {
+          id: song.id,
+          title: song.title || '(empty)',
+          hasContent: hasContent,
+          hasAudio: hasAudio
+        });
+        return false;
+      }
+
+      return true;
+    });
+
+    if (validSongs.length < userSongs.length) {
+      console.warn(`⚠️ Filtered out ${userSongs.length - validSongs.length} invalid songs before saving`);
+    }
+
+    // Store songs in localStorage
+    localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(validSongs));
+
+    console.log('✅ Saved', validSongs.length, 'songs to localStorage');
     return true;
   } catch (error) {
     console.error('❌ Error saving songs to localStorage:', error);

@@ -83,165 +83,73 @@ export const getAudioDuration = (file) => {
   });
 };
 
-// Detect if running in Capacitor environment
-const isCapacitorEnvironment = () => {
-  return typeof window !== 'undefined' && window.Capacitor !== undefined;
-};
-
-// Upload using XMLHttpRequest (for Capacitor)
-// XMLHttpRequest is used instead of fetch because CapacitorHttp patches fetch
-// and converts FormData to JSON, which breaks multipart/form-data uploads
-const uploadWithXHR = (uploadUrl, formData, file) => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      console.log('📤 Sending XMLHttpRequest to:', uploadUrl);
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', uploadUrl, true);
-
-      xhr.onload = async () => {
-        console.log('📥 Response status:', xhr.status);
-
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const result = JSON.parse(xhr.responseText);
-            console.log('✅ Audio uploaded to Supabase:', result);
-
-            // Get duration locally since Supabase doesn't calculate it
-            const duration = await getAudioDuration(file);
-
-            resolve({
-              audioUrl: result.publicUrl,
-              filename: file.name,
-              size: file.size,
-              duration
-            });
-          } catch (e) {
-            console.error('❌ Failed to parse response:', xhr.responseText);
-            reject(new Error('Failed to parse server response'));
-          }
-        } else {
-          console.error('❌ Response error:', xhr.responseText);
-          let errorMessage = `Upload failed with status ${xhr.status}`;
-          try {
-            const errorData = JSON.parse(xhr.responseText);
-            // FIXED: Provide user-friendly messages for common errors
-            if (errorData.error && errorData.error.includes('too large')) {
-              errorMessage = `File too large: ${errorData.details || 'Maximum file size is 50MB'}`;
-            } else if (errorData.error && errorData.error.includes('Memory limit')) {
-              errorMessage = 'File is too large for server to process. Please use a smaller file (max 50MB).';
-            } else {
-              errorMessage = errorData.error || errorData.details || errorMessage;
-            }
-          } catch (e) {
-            errorMessage = xhr.responseText || errorMessage;
-          }
-          reject(new Error(errorMessage));
-        }
-      };
-
-      xhr.onerror = () => {
-        console.error('❌ XMLHttpRequest error');
-        reject(new Error('Network error: Could not reach upload server. Please check your internet connection.'));
-      };
-
-      xhr.ontimeout = () => {
-        console.error('❌ XMLHttpRequest timeout');
-        reject(new Error('Upload timed out. Please try again.'));
-      };
-
-      // Set timeout to 60 seconds for large files
-      xhr.timeout = 60000;
-
-      // Send the request
-      xhr.send(formData);
-
-    } catch (error) {
-      console.error('❌ XHR upload error:', error);
-      reject(error);
+// Upload audio file to Supabase Storage using signed URLs
+// This bypasses Netlify's 6MB payload limit by uploading directly to Supabase
+const uploadToSupabase = async (file, songId, userId = 'anonymous') => {
+  // Use relative path on web, full URL on mobile
+  const getApiBase = () => {
+    if (typeof window !== 'undefined' &&
+        (window.location.hostname.includes('netlify.app') ||
+         window.location.hostname.includes('.netlify.com') ||
+         window.location.hostname.includes('lyrical-toolkit.com'))) {
+      return '';
     }
-  });
-};
+    return 'https://lyrical-toolkit.netlify.app';
+  };
+  const API_BASE = getApiBase();
 
-// Upload using fetch (for standard web environments)
-const uploadWithFetch = async (uploadUrl, formData, file) => {
+  console.log('☁️ Uploading audio file to Supabase Storage:', file.name);
+  console.log('📊 File size:', file.size, 'bytes');
+
   try {
-    console.log('📤 Sending fetch request to:', uploadUrl);
-
-    const response = await fetch(uploadUrl, {
+    // Step 1: Get signed upload URL from our function
+    console.log('📝 Requesting signed upload URL...');
+    const urlResponse = await fetch(`${API_BASE}/.netlify/functions/get-upload-url`, {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        userId: userId,
+        contentType: file.type || 'audio/mpeg'
+      })
     });
 
-    console.log('📥 Response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Response error:', errorText);
-      let errorMessage = `Upload failed with status ${response.status}`;
-      try {
-        const errorData = JSON.parse(errorText);
-        // FIXED: Provide user-friendly messages for common errors
-        if (errorData.error && errorData.error.includes('too large')) {
-          errorMessage = `File too large: ${errorData.details || 'Maximum file size is 50MB'}`;
-        } else if (errorData.error && errorData.error.includes('Memory limit')) {
-          errorMessage = 'File is too large for server to process. Please use a smaller file (max 50MB).';
-        } else {
-          errorMessage = errorData.error || errorData.details || errorMessage;
-        }
-      } catch (e) {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
+    if (!urlResponse.ok) {
+      const error = await urlResponse.text();
+      throw new Error(`Failed to get upload URL: ${error}`);
     }
 
-    const result = await response.json();
-    console.log('✅ Audio uploaded to Supabase:', result);
+    const { uploadUrl, publicUrl } = await urlResponse.json();
+    console.log('✅ Got signed upload URL');
 
-    // Get duration locally since Supabase doesn't calculate it
+    // Step 2: Upload directly to Supabase using signed URL
+    console.log('📤 Uploading file to Supabase...');
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type || 'audio/mpeg',
+        'x-upsert': 'false'
+      },
+      body: file
+    });
+
+    if (!uploadResponse.ok) {
+      const error = await uploadResponse.text();
+      throw new Error(`Upload failed: ${error}`);
+    }
+
+    console.log('✅ Audio uploaded to Supabase');
+
+    // Get duration locally
     const duration = await getAudioDuration(file);
 
     return {
-      audioUrl: result.publicUrl,
+      audioUrl: publicUrl,
       filename: file.name,
       size: file.size,
       duration
     };
-  } catch (error) {
-    console.error('❌ Fetch upload error:', error);
-    throw error;
-  }
-};
 
-// Upload audio file to Supabase Storage
-// Automatically detects environment and uses appropriate method:
-// - Capacitor (mobile): XMLHttpRequest (bypasses CapacitorHttp fetch patching)
-// - Web browser: Standard fetch()
-const uploadToSupabase = async (file, songId, userId = 'anonymous') => {
-  const NETLIFY_URL = 'https://lyrical-toolkit.netlify.app';
-  const uploadUrl = `${NETLIFY_URL}/.netlify/functions/upload-audio`;
-
-  const isCapacitor = isCapacitorEnvironment();
-
-  console.log('☁️ Uploading audio file to Supabase Storage:', file.name);
-  console.log('🌐 Upload URL:', uploadUrl);
-  console.log('📊 File size:', file.size, 'bytes');
-  console.log('📱 Environment:', isCapacitor ? 'Capacitor (mobile)' : 'Web browser');
-  console.log('🔧 Upload method:', isCapacitor ? 'XMLHttpRequest' : 'fetch()');
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('filename', file.name);
-    formData.append('userId', userId);
-    formData.append('songId', String(songId));
-
-    // Use appropriate upload method based on environment
-    if (isCapacitor) {
-      return await uploadWithXHR(uploadUrl, formData, file);
-    } else {
-      return await uploadWithFetch(uploadUrl, formData, file);
-    }
   } catch (error) {
     console.error('❌ Supabase upload error:', error);
     throw error;

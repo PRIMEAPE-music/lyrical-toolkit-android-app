@@ -705,7 +705,7 @@ exports.handler = async (event, context) => {
     console.error('📝 Error name:', error.name);
     console.error('💬 Error message:', error.message);
     console.error('📚 Error stack:', error.stack);
-    
+
     // Memory usage at time of crash
     if (process.memoryUsage) {
       try {
@@ -719,11 +719,16 @@ exports.handler = async (event, context) => {
         console.error('❌ Could not get memory usage:', memError.message);
       }
     }
-    
+
     // Attempt to determine error category
     let errorCategory = 'unknown';
     let errorDetails = error.message;
-    
+    let debugInfo = {
+      errorName: error.name,
+      errorType: error.constructor.name,
+      stack: error.stack ? error.stack.split('\n').slice(0, 3).join(' | ') : 'No stack trace'
+    };
+
     if (error.message && error.message.toLowerCase().includes('memory')) {
       errorCategory = 'memory_limit';
       errorDetails = 'Function ran out of memory processing the request';
@@ -733,14 +738,17 @@ exports.handler = async (event, context) => {
     } else if (error.message && error.message.toLowerCase().includes('multipart')) {
       errorCategory = 'parsing_error';
       errorDetails = 'Failed to parse multipart form data';
+    } else if (error.message && error.message.toLowerCase().includes('cannot find module')) {
+      errorCategory = 'module_error';
+      errorDetails = 'Required module not found: ' + error.message;
     } else if (error.name === 'RangeError') {
       errorCategory = 'range_error';
       errorDetails = 'Possible memory allocation issue with large file';
     }
-    
+
     console.error('🏷️ Error category:', errorCategory);
     console.error('📖 Error details:', errorDetails);
-    
+
     // Ensure we always return a proper JSON response
     const errorHeaders = {
       'Access-Control-Allow-Origin': '*',
@@ -748,15 +756,16 @@ exports.handler = async (event, context) => {
       'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
       'Content-Type': 'application/json'
     };
-    
+
     return {
       statusCode: 500,
       headers: errorHeaders,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Function execution failed',
         category: errorCategory,
         details: errorDetails,
         originalError: error.message,
+        debug: debugInfo,
         timestamp: new Date().toISOString(),
         requestId: context?.awsRequestId || 'unknown'
       })

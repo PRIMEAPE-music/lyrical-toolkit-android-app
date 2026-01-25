@@ -8,10 +8,11 @@ const NETLIFY_URL = process.env.REACT_APP_NETLIFY_URL || 'https://lyrical-toolki
 
 // Detect environment and use appropriate auth endpoint
 const getAuthAPI = () => {
-  // If we're on a Netlify domain, use relative path
+  // If we're on a web browser (Netlify domain or custom domain), use relative path
   if (typeof window !== 'undefined' &&
       (window.location.hostname.includes('netlify.app') ||
-       window.location.hostname.includes('.netlify.com'))) {
+       window.location.hostname.includes('.netlify.com') ||
+       window.location.hostname.includes('lyrical-toolkit.com'))) {
     return '/.netlify/functions';
   }
 

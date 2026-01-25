@@ -6,12 +6,13 @@
 // Get Netlify URL from environment variable
 const NETLIFY_URL = process.env.REACT_APP_NETLIFY_URL || 'https://lyrical-toolkit.netlify.app';
 
-// Detect if we're on Netlify domain or mobile app
+// Detect if we're on Netlify domain, custom domain, or mobile app
 const getBaseURL = () => {
-  // If we're on a Netlify domain, use relative path
+  // If we're on a web browser (Netlify domain or custom domain), use relative path
   if (typeof window !== 'undefined' &&
       (window.location.hostname.includes('netlify.app') ||
-       window.location.hostname.includes('.netlify.com'))) {
+       window.location.hostname.includes('.netlify.com') ||
+       window.location.hostname.includes('lyrical-toolkit.com'))) {
     return '/.netlify/functions';
   }
 
@@ -259,7 +260,7 @@ export const apiUpload = async (endpoint, formData) => {
   return response.json();
 };
 
-export default {
+const api = {
   API_BASE_URL,
   getAuthHeaders,
   apiRequest,
@@ -269,3 +270,5 @@ export default {
   apiDelete,
   apiUpload
 };
+
+export default api;

@@ -113,11 +113,22 @@ export const getSong = async (songId) => {
 export const createSong = async (songId, songData) => {
   const authHeaders = await getAuthHeader();
 
-  const response = await httpPost(SONGS_API, {
+  // Build payload with all fields (backend expects camelCase)
+  const payload = {
     title: songData.title,
     content: songData.content,
     filename: songData.filename
-  }, {
+  };
+
+  // Include audio metadata if present
+  if (songData.audioFileUrl) {
+    payload.audioFileUrl = songData.audioFileUrl;
+    payload.audioFileName = songData.audioFileName;
+    payload.audioFileSize = songData.audioFileSize;
+    payload.audioDuration = songData.audioDuration;
+  }
+
+  const response = await httpPost(SONGS_API, payload, {
     'Content-Type': 'application/json',
     ...authHeaders
   });

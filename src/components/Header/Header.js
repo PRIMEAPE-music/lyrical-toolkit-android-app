@@ -133,21 +133,6 @@ const Header = ({
           
           <div style={{ display: 'table-cell', width: '33.33%', verticalAlign: 'middle', textAlign: 'right' }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button
-                onClick={() => setShowManual(!showManual)}
-                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                  showManual
-                    ? darkMode
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-blue-600 text-white'
-                    : darkMode
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                <Book className="w-4 h-4 inline mr-2" />
-                Show Manual
-              </button>
               {isAuthenticated ? (
                 <button
                   onClick={onLogout}
@@ -171,6 +156,21 @@ const Header = ({
                   Login
                 </button>
               )}
+              <button
+                onClick={() => setShowManual(!showManual)}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  showManual
+                    ? darkMode
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : darkMode
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <Book className="w-4 h-4 inline mr-2" />
+                Show Manual
+              </button>
             </div>
           </div>
         </div>

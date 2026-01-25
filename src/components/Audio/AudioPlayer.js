@@ -1,17 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Play, 
-  Pause, 
-  Volume2, 
-  VolumeX, 
-  Download, 
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Download,
   Trash2,
   RotateCcw,
   MoreHorizontal
 } from 'lucide-react';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
+import { CapacitorHttp } from '@capacitor/core';
 import audioStorageService from '../../services/audioStorageService';
 
 const AudioPlayer = ({ 
@@ -219,64 +220,85 @@ const AudioPlayer = ({
         }
         // On mobile/Android, convert Supabase URLs to blob URLs to avoid CORS issues
         else if (audioUrl.includes('supabase.co')) {
-          const isMobileScreen = window.innerWidth <= 768;
           const isCapacitor = window.Capacitor !== undefined;
+          const isNativePlatform = window.Capacitor?.isNativePlatform?.() || false;
 
-          if (isMobileScreen || isCapacitor) {
-            console.log('📱 Mobile/Capacitor detected, converting Supabase URL to blob URL');
-            console.log('🔍 Original URL:', audioUrl);
-            try {
-              // Use CapacitorHttp if available (bypasses CORS on native apps)
-              if (isCapacitor && window.Capacitor?.Plugins?.CapacitorHttp) {
-                console.log('🔌 Using CapacitorHttp to fetch audio');
-                const { CapacitorHttp } = window.Capacitor.Plugins;
-                const httpResponse = await CapacitorHttp.get({
-                  url: audioUrl,
-                  responseType: 'arraybuffer'
-                });
+          console.log('📱 Supabase URL detected, isCapacitor:', isCapacitor, 'isNative:', isNativePlatform);
+          console.log('🔍 Original URL:', audioUrl);
 
-                console.log('📥 CapacitorHttp response status:', httpResponse.status);
+          try {
+            // Use CapacitorHttp for native apps (bypasses CORS)
+            if (isCapacitor && isNativePlatform) {
+              console.log('🔌 Using CapacitorHttp to fetch audio (native platform)');
+
+              // CapacitorHttp.get doesn't support arraybuffer responseType directly
+              // Use request method with blob handling
+              const httpResponse = await CapacitorHttp.request({
+                url: audioUrl,
+                method: 'GET',
+                responseType: 'blob'
+              });
+
+              console.log('📥 CapacitorHttp response status:', httpResponse.status);
+              if (httpResponse.status !== 200) {
+                throw new Error(`HTTP ${httpResponse.status}`);
+              }
+
+              // CapacitorHttp returns data as base64 for blob responseType
+              // Convert base64 to blob
+              if (httpResponse.data) {
                 console.log('📦 Response data type:', typeof httpResponse.data);
-                if (httpResponse.status !== 200) {
-                  throw new Error(`HTTP ${httpResponse.status}`);
+
+                let blob;
+                if (typeof httpResponse.data === 'string') {
+                  // Base64 string - convert to blob
+                  const byteCharacters = atob(httpResponse.data);
+                  const byteNumbers = new Array(byteCharacters.length);
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                  }
+                  const byteArray = new Uint8Array(byteNumbers);
+                  blob = new Blob([byteArray], { type: 'audio/mpeg' });
+                } else {
+                  // Already blob-like
+                  blob = new Blob([httpResponse.data], { type: 'audio/mpeg' });
                 }
 
-                // Convert arraybuffer to blob
-                const arrayBuffer = httpResponse.data;
-                const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
                 console.log('📦 Created blob, size:', blob.size);
                 playableUrl = URL.createObjectURL(blob);
                 createdBlobUrl = playableUrl;
                 console.log('✅ Converted to blob URL via CapacitorHttp');
               } else {
-                // Fallback to regular fetch for mobile web browsers
-                console.log('🌐 Using fetch to load audio');
-                const response = await fetch(audioUrl, {
-                  mode: 'cors',
-                  credentials: 'omit',
-                  headers: {
-                    'Accept': 'audio/*'
-                  }
-                });
-                console.log('📥 Fetch response status:', response.status);
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.error('❌ Fetch error response:', errorText);
-                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                const blob = await response.blob();
-                console.log('📦 Blob type:', blob.type, 'size:', blob.size);
-                playableUrl = URL.createObjectURL(blob);
-                createdBlobUrl = playableUrl;
-                console.log('✅ Converted to blob URL:', playableUrl.substring(0, 50) + '...');
+                throw new Error('No data in response');
               }
-            } catch (fetchError) {
-              console.error('❌ Failed to convert Supabase URL to blob:', fetchError);
-              console.error('❌ Error name:', fetchError.name);
-              console.error('❌ Error message:', fetchError.message);
-              console.error('❌ Full error:', JSON.stringify(fetchError, Object.getOwnPropertyNames(fetchError)));
-              throw new Error(`Failed to load audio from cloud storage: ${fetchError.message}`);
+            } else {
+              // Fallback to regular fetch for web browsers
+              console.log('🌐 Using fetch to load audio');
+              const response = await fetch(audioUrl, {
+                mode: 'cors',
+                credentials: 'omit',
+                headers: {
+                  'Accept': 'audio/*'
+                }
+              });
+              console.log('📥 Fetch response status:', response.status);
+              if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Fetch error response:', errorText);
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+              const blob = await response.blob();
+              console.log('📦 Blob type:', blob.type, 'size:', blob.size);
+              playableUrl = URL.createObjectURL(blob);
+              createdBlobUrl = playableUrl;
+              console.log('✅ Converted to blob URL:', playableUrl.substring(0, 50) + '...');
             }
+          } catch (fetchError) {
+            console.error('❌ Failed to convert Supabase URL to blob:', fetchError);
+            console.error('❌ Error name:', fetchError.name);
+            console.error('❌ Error message:', fetchError.message);
+            console.error('❌ Full error:', JSON.stringify(fetchError, Object.getOwnPropertyNames(fetchError)));
+            throw new Error(`Failed to load audio from cloud storage: ${fetchError.message}`);
           }
         }
 
